@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173a42">
+  <title>스캔노트 · 이미지에서 편집 가능한 문서로</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="스캔노트 처음으로">
+      <span class="brand-mark" aria-hidden="true">S<span></span></span>
+      <span>스캔노트<small>SCAN NOTE</small></span>
+    </a>
+    <div class="header-actions">
+      <span id="serviceStatus" class="status-pill"><i></i>실행 상태 확인 중</span>
+      <button id="openProjectButton" class="button quiet small" type="button">편집 내용 열기</button>
+      <button id="settingsButton" class="button quiet small" type="button"><span aria-hidden="true">⚙</span> 인식 설정</button>
+      <button id="shutdownButton" class="button quiet small shutdown-button" type="button" title="백그라운드 프로그램도 함께 종료해요">프로그램 종료</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">종이에 담긴 내용을, 자유롭게.</p><h1>이미지를 <span>편집 가능한 문서</span>로.</h1><p class="intro-copy">스캔 PDF와 사진 속 글자, 표, 그림을 꺼내어 한글 문서로 저장하세요.</p></div>
+      <button id="demoButton" class="demo-button" type="button">예시 문서로 시작하기 <span aria-hidden="true">↗</span></button>
+    </section>
+
+    <section class="action-bar" aria-label="변환 도구">
+      <div class="file-summary"><span class="file-symbol" aria-hidden="true">▤</span><div><strong id="fileName">변환할 문서를 골라주세요</strong><span id="fileInfo">PDF · JPG · PNG · WEBP · BMP · TIFF</span></div></div>
+      <div class="convert-actions">
+        <button id="chooseFileButton" class="button secondary" type="button">파일 선택</button>
+        <label class="page-range-label" for="pageRange"><span>변환할 쪽 <small>첫 페이지 = 1</small></span><input id="pageRange" type="text" placeholder="전체 · 예: 4-5,7-8,13" autocomplete="off" aria-label="변환할 쪽 범위" aria-describedby="pageRangeHelp" title="비워두면 전체를 변환해요. PDF 파일의 첫 페이지가 1이며, 본문에 인쇄된 쪽 번호와 다를 수 있어요."></label><span id="pageRangeHelp" class="sr-only">비워두면 전체 페이지를 변환합니다. 파일의 첫 페이지부터 1로 셉니다. 예: 4-5,7-8,13. 한 번에 500쪽 이내로 선택해주세요.</span>
+        <label class="engine-label" for="engineSelect"><span class="sr-only">글자 인식 방식</span><select id="engineSelect"><option value="local">내 PC · 오프라인 OCR</option><option value="sllm">내 PC · 소형 AI 검수</option><option value="openai">OpenAI API</option><option value="gemini">Gemini API</option><option value="ollama">Ollama</option></select></label>
+        <button id="convertButton" class="button primary" type="button" disabled><span aria-hidden="true">✦</span> 문서 변환</button>
+      </div>
+      <input id="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,image/*,application/pdf" hidden>
+      <input id="projectInput" type="file" accept=".json,application/json" hidden>
+    </section>
+
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section id="progressSection" class="progress-section" aria-label="변환 진행 상황" hidden><div><strong id="progressTitle">문서를 읽고 있어요</strong><span id="progressText">잠시만 기다려주세요.</span></div><progress id="conversionProgress" max="100" value="0"></progress><button id="cancelConversion" class="button quiet small" type="button">잠시 멈추기</button></section>
+    <section id="recoverySection" class="notice" aria-label="중단한 문서 이어서 변환" hidden><strong>이어서 변환할 문서가 있어요</strong><p>완료한 페이지는 보관했어요. 나머지만 다시 읽을 수 있어요.</p><div id="recoveryJobs"></div></section>
+
+    <section class="workspace" aria-label="원본과 변환 결과 비교">
+      <div class="workspace-bar"><div class="steps"><span class="step active"><b>1</b> 파일 선택</span><span aria-hidden="true">›</span><span class="step" id="convertStep"><b>2</b> 변환 &amp; 확인</span><span aria-hidden="true">›</span><span class="step" id="saveStep"><b>3</b> 한글 문서 저장</span></div><div class="view-controls"><button id="previousPage" aria-label="이전 페이지" disabled>‹</button><span id="pageIndicator">— / —</span><button id="nextPage" aria-label="다음 페이지" disabled>›</button><span class="divider"></span><button id="zoomOut" aria-label="축소" disabled>−</button><button id="zoomValue" aria-label="페이지 너비에 맞추기" disabled>맞춤</button><button id="zoomIn" aria-label="확대" disabled>+</button></div></div>
+      <div class="comparison-grid">
+        <section class="document-panel source-panel">
+          <header class="panel-header"><h2><span class="panel-dot source-dot"></span>원본 문서</h2><span class="panel-meta" id="sourceMeta">이미지 그대로</span></header>
+          <div id="sourceViewport" class="page-viewport">
+            <button id="dropzone" class="dropzone" type="button"><span class="paper-illustration" aria-hidden="true"><i></i><i></i><i></i><b>+</b></span><strong>파일을 여기에 놓아주세요</strong><span>또는 눌러서 파일 선택</span><small>스캔한 공문, 보고서, 이미지 문서</small></button>
+            <div id="sourceStage" class="page-stage" hidden><img id="sourceImage" alt="원본 문서 페이지"><div id="sourceHighlight" class="source-highlight" hidden></div></div>
+            <div id="filePreview" class="file-preview" hidden></div>
+          </div>
+        </section>
+        <section class="document-panel editor-panel">
+          <header class="panel-header"><h2><span class="panel-dot editor-dot"></span>편집 가능한 문서 <span class="edit-tag">EDIT</span></h2><div class="editor-display-controls"><label class="confidence-toggle" title="편집 결과 뒤에 원본을 흐리게 겹쳐 배치를 비교합니다"><input id="overlayToggle" type="checkbox"><span>원본 겹치기</span></label><label class="confidence-toggle" title="인식 신뢰도 90% 미만인 내용을 표시합니다"><input id="confidenceToggle" type="checkbox" checked><span>확인할 글자</span></label></div></header>
+          <div id="editorViewport" class="page-viewport">
+            <div id="editorEmpty" class="editor-empty"><span class="empty-icon" aria-hidden="true">Aa<span>✦</span></span><h3>새 문서를 기다리고 있어요</h3><p>변환이 끝나면 글자와 표를 바로 수정할 수 있어요.<br>원본과 나란히 보며 확인하세요.</p><div class="empty-features"><span>글자 편집</span><span>표 유지</span><span>그림 보존</span></div></div>
+            <div id="editorStage" class="page-stage" hidden><div id="editablePage" class="editable-page" aria-label="변환 문서 편집 영역"></div></div>
+          </div>
+        </section>
+      </div>
+      <div class="workspace-footer"><p id="editorHint"><span aria-hidden="true">ⓘ</span> 변환 후 글자나 표를 누르면 바로 편집할 수 있어요.</p><span><i class="legend-swatch"></i> 노란색은 인식 신뢰도가 낮은 부분</span></div>
+    </section>
+
+    <section id="blockTools" class="block-tools" aria-label="선택한 내용 위치 조정" hidden><strong id="selectedBlockLabel">선택한 내용</strong><label>가로 위치 <input id="blockX" type="number" min="0" step="1"></label><label>세로 위치 <input id="blockY" type="number" min="0" step="1"></label><label>너비 <input id="blockWidth" type="number" min="1" step="1"></label><label>높이 <input id="blockHeight" type="number" min="1" step="1"></label><label id="fontSizeField">글자 크기 <input id="blockFontSize" type="number" min="5" max="160" step="1"></label><button id="restoreBlock" class="button quiet small" type="button">이 부분 원래대로</button><button id="deselectBlock" class="icon-button" aria-label="선택 닫기">×</button><div id="modelReviewPanel" class="model-review-panel" aria-live="polite" hidden><strong>소형 AI 검수 메모</strong><p id="modelReviewMessage"></p><div id="modelSuggestionSection" hidden><span>다르게 읽은 표기</span><p id="modelSuggestedText" class="model-suggested-text"></p></div><p id="modelReviewDifference" class="model-review-difference" hidden></p><small>제안은 정답 확정이 아니에요. 원본과 비교한 뒤, 문서의 글자를 직접 수정해주세요.</small></div></section>
+
+    <section class="result-bar" aria-label="변환 결과 및 저장"><div class="result-summary"><span class="result-icon" aria-hidden="true">✓</span><div><strong id="resultTitle">완성된 문서를 한글에서 이어서 편집하세요</strong><p id="resultDescription">HWPX로 저장하면 글자와 표를 다시 수정할 수 있어요.</p></div></div><div class="export-actions"><button id="saveProjectButton" class="button quiet" type="button" disabled>편집 내용 저장</button><button id="exportHtmlButton" class="button secondary" type="button" disabled>HTML 저장</button><button id="exportHwpxButton" class="button primary" type="button" disabled>HWPX 저장 <span aria-hidden="true">↓</span></button></div></section>
+
+    <section class="quality-section" aria-label="인식 품질 확인">
+      <div class="quality-overview"><div><p class="eyebrow">한 번 더 꼼꼼하게</p><h2>변환 품질 확인</h2><p>인식 신뢰도는 참고값이에요.<br>실제 정확도는 정답 문장과 비교해서 확인해요.</p></div><div class="metric-card"><span>평균 인식 신뢰도</span><strong id="confidenceMetric">—</strong><small>OCR 엔진이 제공한 값</small></div><div class="metric-card"><span>확인이 필요한 부분</span><strong id="reviewMetric">—</strong><small>신뢰도 90% 미만</small></div><div class="metric-card"><span>수정한 부분</span><strong id="editedMetric">—</strong><small>현재 편집 내용 기준</small></div></div>
+      <details class="quality-details"><summary>정답 문장으로 실제 글자 정확도 확인 <span aria-hidden="true">+</span></summary><div class="quality-content"><div><label for="referenceText">원본에 적힌 정확한 문장을 입력하거나 붙여 넣어주세요.</label><textarea id="referenceText" rows="4" placeholder="비교할 범위의 정답 문장을 같은 읽기 순서로 입력하세요. 표는 행 순서로 비교합니다."></textarea><p>비교 범위와 같은 정답을 입력하세요. 편집하면 결과를 다시 확인하세요.</p><div class="quality-buttons"><label class="sr-only" for="qualityScope">정답 비교 범위</label><select id="qualityScope"><option value="all">문서 전체 비교</option><option value="page">현재 페이지 비교</option></select><button id="checkQualityButton" class="button secondary" type="button" disabled>정답과 비교하기</button></div></div><div class="quality-results" aria-live="polite"><div><span>글자 정확도</span><strong id="accuracyMetric">—</strong></div><div><span>글자 오류율 · CER</span><strong id="cerMetric">—</strong></div><div><span>단어 오류율 · WER</span><strong id="werMetric">—</strong></div><small id="qualityExplanation">정답 문장이 있을 때만 실제 오류율을 계산해요. 목표 정확도는 95% 이상입니다.</small></div></div></details>
+      <ul id="warningsList" class="warnings-list" hidden></ul>
+    </section>
+  </main>
+  <footer class="site-footer"><span>스캔노트 <b>·</b> 종이에서, 편집으로.</span><span id="privacyNote">내 PC 방식은 문서가 외부로 전송되지 않아요.</span><p class="format-attribution">본 제품은 한컴의 HWP 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.</p></footer>
+
+  <dialog id="settingsDialog"><form id="settingsForm" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">원하는 방식으로 읽기</p><h2>글자 인식 설정</h2></div><button class="icon-button" id="closeSettingsButton" type="button" aria-label="설정 닫기">×</button></div><p class="dialog-description">내 PC 방식은 오프라인으로, API 방식은 인터넷에 연결해서 사용해요.</p><label class="form-label" for="settingsProvider">인식 방식</label><select id="settingsProvider"><option value="local">내 PC · 오프라인 OCR</option><option value="sllm">내 PC · 소형 AI 검수</option><option value="openai">OpenAI API</option><option value="gemini">Gemini API</option><option value="ollama">Ollama</option></select><div id="localModelInfo" class="model-info">설치된 모델을 확인하고 있어요.</div><div id="remoteSettings"><label class="form-label" for="apiKey">API 키</label><input id="apiKey" type="password" autocomplete="off" placeholder="제공받은 API 키를 입력하세요"><p class="field-help" id="apiKeyHelp">키는 현재 실행 중에만 사용하며 파일에 저장하지 않아요.</p><label class="form-label" for="baseUrl">서버 주소 <span>(선택)</span></label><input id="baseUrl" type="url" placeholder="기본 서버 주소를 사용합니다"><label class="form-label" for="modelName">모델 이름 <span>(선택)</span></label><input id="modelName" type="text" placeholder="기본 모델을 사용합니다"></div><p id="providerPrivacy" class="provider-privacy"></p><div id="settingsTestResult" class="notice" role="status" hidden></div><div class="dialog-actions"><button id="testSettingsButton" class="button secondary" type="button">연결 확인</button><button id="saveSettingsButton" class="button primary" type="submit">설정 적용</button></div></form></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <dialog id="shutdownDialog" aria-labelledby="shutdownTitle"><div class="dialog-heading"><div><p class="eyebrow">편집 내용을 먼저 확인하세요</p><h2 id="shutdownTitle">저장하지 않은 수정이 있어요</h2></div></div><p class="dialog-description">편집 내용을 JSON 파일로 저장하면 나중에 다시 열 수 있어요. 원본 이미지 자료도 이 PC에 남아 있어야 해요.</p><div class="dialog-actions shutdown-dialog-actions"><button id="cancelShutdownButton" class="button quiet" type="button">계속 사용</button><button id="discardShutdownButton" class="button secondary" type="button">저장 없이 종료</button><button id="saveShutdownButton" class="button primary" type="button">편집 저장하고 종료</button></div></dialog>
+</body>
+</html>

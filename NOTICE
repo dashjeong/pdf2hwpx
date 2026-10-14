@@ -1,0 +1,21 @@
+pdf2hwpx (스캔노트)
+Copyright 2026 pdf2hwpx contributors
+
+Original project source is licensed under the Apache License, Version 2.0.
+Third-party components retain their own licenses and notices. This project
+license does not replace licenses on templates, model weights, runtimes,
+Python dependencies, fonts, or user-provided documents.
+
+converter/Skeleton.hwpx is a template from airmang/python-hwpx.
+Copyright 2025-2026 airmang.
+This product includes software developed by airmang.
+Preserved upstream license and notice:
+  converter/HWPX_TEMPLATE_LICENSE.txt
+  converter/HWPX_TEMPLATE_NOTICE.txt
+
+본 제품은 한글과컴퓨터의 ᄒᆞᆫ글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
+
+HWPX is a Hancom document format. This is an independent implementation.
+Additional dependency and distribution license texts are preserved in licenses/.
+OCR model and local language-model artifacts are prepared separately and are
+not part of the public Git source repository.

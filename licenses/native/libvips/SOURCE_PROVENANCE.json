@@ -1,0 +1,709 @@
+{
+  "inventory_date": "2026-10-14",
+  "scope": "Actual installed Windows x64 pyvips 3.2.0 / pyvips-binary 8.18.7; new frozen build must separately verify these bytes.",
+  "wrapper": {
+    "name": "pyvips",
+    "version": "3.2.0",
+    "license": "MIT",
+    "license_file": "licenses/python/pyvips/LICENSE.txt"
+  },
+  "binary_distribution": {
+    "name": "pyvips-binary",
+    "version": "8.18.7",
+    "metadata_license": "LGPL-3.0-or-later",
+    "build_scripts_license": "MIT; licenses/python/pyvips-binary/LICENSE",
+    "warning": "Build-script MIT permission does not override native DLL licenses."
+  },
+  "native_dll": {
+    "name": "libvips-42-06dab07cc386748513337a31672b1d52.dll",
+    "bytes": 19018240,
+    "sha256": "06dab07cc386748513337a31672b1d5269fbc770a14ff403080575665bf0813f",
+    "matched_upstream_member": "vips-dev-8.18/lib/libvips-42.dll",
+    "linkage": "Single DLL contains statically linked native dependencies; imports observed are Windows/UCRT system libraries."
+  },
+  "archives": [
+    {
+      "url": "https://github.com/kleisauke/libvips-packaging/releases/download/v8.18.7/libvips-8.18.7-win-x64.tar.gz",
+      "bytes": 8813459,
+      "sha256": "5aeaaa952c2919723f1689e36c009ec4f1b5233ac293ad89be5ac50e76fa818a"
+    },
+    {
+      "url": "https://github.com/libvips/build-win64-mxe/releases/download/v8.18.7/vips-dev-x64-web-8.18.7-static.zip",
+      "bytes": 9398858,
+      "sha256": "a736af61d3b46499760efa606e469cb14e060445b1f6fd36a1fa2e75009e1197"
+    }
+  ],
+  "upstream_notice": "https://github.com/kleisauke/libvips-packaging/blob/v8.18.7/THIRD-PARTY-NOTICES.md",
+  "upstream_packaging_recipe": "https://github.com/kleisauke/libvips-packaging/blob/v8.18.7/build/win.sh",
+  "upstream_dependency_versions": "https://github.com/kleisauke/libvips-packaging/blob/v8.18.7/versions.properties",
+  "versions_file": "licenses/native/libvips/versions.json",
+  "notice_file": "licenses/native/libvips/THIRD-PARTY-NOTICES.md",
+  "components": [
+    {
+      "name": "aom",
+      "version": "3.15.1",
+      "license_as_used_by_binary_packager": "BSD-2-Clause AND AOM-patent",
+      "source": "https://storage.googleapis.com/aom-releases/libaom-3.15.1.tar.gz",
+      "source_license_blob_sha": null,
+      "license_files": [
+        "licenses/native/libvips/components/aom/AUTHORS",
+        "licenses/native/libvips/components/aom/LICENSE",
+        "licenses/native/libvips/components/aom/PATENTS"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/aom/AUTHORS": "c31b80ca48fde06ca03aef2f3dec15413fe0c2661fe6b56e86ccd69dbc6f9a1d",
+        "licenses/native/libvips/components/aom/LICENSE": "4764a286d8b2faeaf42f4418e7d7a28d58fc8fd4d00a3d0a7f44b0a4099de7f2",
+        "licenses/native/libvips/components/aom/PATENTS": "661fb8e504744e95587b556b94a58343448300606a41bea8c7a9b97125696e61"
+      }
+    },
+    {
+      "name": "cairo",
+      "version": "1.18.6",
+      "license_as_used_by_binary_packager": "MPL-1.1",
+      "source": "https://gitlab.freedesktop.org/cairo/cairo/-/tree/1.18.6",
+      "source_license_blob_sha": null,
+      "license_files": [
+        "licenses/native/libvips/components/cairo/COPYING",
+        "licenses/native/libvips/components/cairo/COPYING-LGPL-2.1",
+        "licenses/native/libvips/components/cairo/COPYING-MPL-1.1"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/cairo/COPYING": "67228a9f7c5f9b67c58f556f1be178f62da4d9e2e6285318d8c74d567255abdf",
+        "licenses/native/libvips/components/cairo/COPYING-LGPL-2.1": "9e9e8608c4cdda51a78cc3a385f4ec9a2e4c96d5ecad74ac8bca5fca3e563b7d",
+        "licenses/native/libvips/components/cairo/COPYING-MPL-1.1": "53692a2ed6c6a2c6ec9b32dd0b820dfae91e0a1fcdf625ca9ed0bdf8705fcc4f"
+      }
+    },
+    {
+      "name": "cgif",
+      "version": "0.5.4",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://github.com/dloebl/cgif/blob/v0.5.4/LICENSE",
+      "source_license_blob_sha": "752e9cbd026d24ab7c3eb917b493bb91d0e35e9a",
+      "license_files": [
+        "licenses/native/libvips/components/cgif/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/cgif/LICENSE.txt": "7264dede477abab4ac3fe8236beb8153845c04ccd33b18f281085087e219fc6d"
+      }
+    },
+    {
+      "name": "expat",
+      "version": "2.8.5",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://github.com/libexpat/libexpat/blob/R_2_8_5/COPYING",
+      "source_license_blob_sha": "1fe8abbe1c5e562d56c90d8ec4a7921210d05319",
+      "license_files": [
+        "licenses/native/libvips/components/expat/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/expat/LICENSE.txt": "73cc92f80889ab23c7287b1a11dd50fdec190c3f26ebe5938c579043817d651e"
+      }
+    },
+    {
+      "name": "fontconfig",
+      "version": "2.18.3",
+      "license_as_used_by_binary_packager": "fontconfig (BSD-like)",
+      "source": "https://gitlab.freedesktop.org/fontconfig/fontconfig/-/tree/2.18.3",
+      "source_license_blob_sha": null,
+      "license_files": [
+        "licenses/native/libvips/components/fontconfig/AUTHORS",
+        "licenses/native/libvips/components/fontconfig/COPYING"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/fontconfig/AUTHORS": "db6d73a160bb2de10268f88ef60aae91771fefdeee4992b791c76ce6592a4a4b",
+        "licenses/native/libvips/components/fontconfig/COPYING": "51a51aa9823704fd90bccc616cdd17ebabb5b2b3e9cbde886ca02c7002288067"
+      }
+    },
+    {
+      "name": "freetype",
+      "version": "2.14.3",
+      "license_as_used_by_binary_packager": "FTL (BSD-like)",
+      "source": "https://github.com/freetype/freetype/blob/VER-2-14-3/docs/FTL.TXT",
+      "source_license_blob_sha": "b9e8cbd66ffff526113350953f4a2f4252a92f49",
+      "license_files": [
+        "licenses/native/libvips/components/freetype/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/freetype/LICENSE.txt": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f"
+      }
+    },
+    {
+      "name": "fribidi",
+      "version": "1.0.17",
+      "license_as_used_by_binary_packager": "LGPL-3.0-or-later",
+      "source": "https://github.com/fribidi/fribidi/blob/v1.0.17/COPYING",
+      "source_license_blob_sha": "f6683e74e0f0130f246dbf7054f4cacc88ca84b0",
+      "license_files": [
+        "licenses/native/libvips/GPL-3.0-or-later.txt",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt",
+        "licenses/native/libvips/components/fribidi/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/fribidi/LICENSE.txt": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt": "d2db3fe538e9ecb8aac723a2bc51d27dfa81aa880ad3fc20c203966ec908dc6e",
+        "licenses/native/libvips/GPL-3.0-or-later.txt": "203c10ae2f92356d658522ee61db97e5daad634c5dc4190bc0bd23a1511a33b4"
+      }
+    },
+    {
+      "name": "glib",
+      "version": "2.90.0",
+      "license_as_used_by_binary_packager": "LGPL-3.0-or-later",
+      "source": "https://github.com/GNOME/glib/blob/2.90.0/COPYING",
+      "source_license_blob_sha": "e818e737a7833b56367e795cef6ee0d992c6e667",
+      "license_files": [
+        "licenses/native/libvips/GPL-3.0-or-later.txt",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt",
+        "licenses/native/libvips/components/glib/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/glib/LICENSE.txt": "65986a89240f59896ce42a3779bbe5ed486a0bca7df636a8eef030fd2e1a0984",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt": "d2db3fe538e9ecb8aac723a2bc51d27dfa81aa880ad3fc20c203966ec908dc6e",
+        "licenses/native/libvips/GPL-3.0-or-later.txt": "203c10ae2f92356d658522ee61db97e5daad634c5dc4190bc0bd23a1511a33b4"
+      }
+    },
+    {
+      "name": "harfbuzz",
+      "version": "14.5.0",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://github.com/harfbuzz/harfbuzz/blob/14.5.0/COPYING",
+      "source_license_blob_sha": "1dd917e9f2e72167de69e3b5dadbc4e7db417da1",
+      "license_files": [
+        "licenses/native/libvips/components/harfbuzz/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/harfbuzz/LICENSE.txt": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
+      }
+    },
+    {
+      "name": "highway",
+      "version": "1.4.0",
+      "license_as_used_by_binary_packager": "BSD-3-Clause",
+      "source": "https://github.com/google/highway/blob/1.4.0/LICENSE",
+      "source_license_blob_sha": "1af4f15ca709c0e74e610c09fe91022f354aea58",
+      "license_files": [
+        "licenses/native/libvips/components/highway/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/highway/LICENSE.txt": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af"
+      }
+    },
+    {
+      "name": "lcms",
+      "version": "2.19.1",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://github.com/mm2/Little-CMS/blob/lcms2.19.1/LICENSE",
+      "source_license_blob_sha": "85480b50b0c5860b541dc3b0032084c55ca91dcd",
+      "license_files": [
+        "licenses/native/libvips/components/lcms/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/lcms/LICENSE.txt": "6dbd60437f8ef91d8de1f08ad75882547fd4931bfcc3566a0735f28db1484d31"
+      }
+    },
+    {
+      "name": "libarchive",
+      "version": "3.8.9",
+      "license_as_used_by_binary_packager": "BSD-2-Clause",
+      "source": "https://github.com/libarchive/libarchive/blob/v3.8.9/COPYING",
+      "source_license_blob_sha": "9d0bcf81ff613bf5f36d71983b75e20cd0f69213",
+      "license_files": [
+        "licenses/native/libvips/components/libarchive/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libarchive/LICENSE.txt": "30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229"
+      }
+    },
+    {
+      "name": "libexif",
+      "version": "0.6.26",
+      "license_as_used_by_binary_packager": "LGPL-3.0-or-later",
+      "source": "https://github.com/libexif/libexif/blob/v0.6.26/COPYING",
+      "source_license_blob_sha": "602bfc94635ddf8f1bf2b00419a85ead645a5b67",
+      "license_files": [
+        "licenses/native/libvips/GPL-3.0-or-later.txt",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt",
+        "licenses/native/libvips/components/libexif/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libexif/LICENSE.txt": "36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt": "d2db3fe538e9ecb8aac723a2bc51d27dfa81aa880ad3fc20c203966ec908dc6e",
+        "licenses/native/libvips/GPL-3.0-or-later.txt": "203c10ae2f92356d658522ee61db97e5daad634c5dc4190bc0bd23a1511a33b4"
+      }
+    },
+    {
+      "name": "libffi",
+      "version": "3.8.0",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://github.com/libffi/libffi/blob/v3.8.0/LICENSE",
+      "source_license_blob_sha": "90a8b230284e5cfbf02cbed3431116922bd84663",
+      "license_files": [
+        "licenses/native/libvips/components/libffi/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libffi/LICENSE.txt": "17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c"
+      }
+    },
+    {
+      "name": "libheif",
+      "version": "1.23.5",
+      "license_as_used_by_binary_packager": "LGPL-3.0-or-later",
+      "source": "https://github.com/strukturag/libheif/blob/v1.23.5/COPYING",
+      "source_license_blob_sha": "f80407e7d5827a93d97767679d3521991e62d8cb",
+      "license_files": [
+        "licenses/native/libvips/GPL-3.0-or-later.txt",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt",
+        "licenses/native/libvips/components/libheif/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libheif/LICENSE.txt": "fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt": "d2db3fe538e9ecb8aac723a2bc51d27dfa81aa880ad3fc20c203966ec908dc6e",
+        "licenses/native/libvips/GPL-3.0-or-later.txt": "203c10ae2f92356d658522ee61db97e5daad634c5dc4190bc0bd23a1511a33b4"
+      }
+    },
+    {
+      "name": "libimagequant",
+      "version": "2.4.1",
+      "license_as_used_by_binary_packager": "BSD-2-Clause",
+      "source": "https://github.com/lovell/libimagequant/blob/v2.4.1/COPYRIGHT",
+      "source_license_blob_sha": "98de36b4d2678a2d9ae426033b14b8a012960c28",
+      "license_files": [
+        "licenses/native/libvips/components/libimagequant/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libimagequant/LICENSE.txt": "7391bfbcde4404cefb9849553362c3ab436f929f5cc1abb57071ec045590ee99"
+      }
+    },
+    {
+      "name": "libnsgif",
+      "version": "vendored in libvips 8.18.7; separately unversioned",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://github.com/libvips/libvips/blob/v8.18.7/libvips/foreign/libnsgif/COPYING",
+      "source_license_blob_sha": "9334b89b3cdc8719225df60ca7deccf6996ea2d4",
+      "license_files": [
+        "licenses/native/libvips/components/libnsgif/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libnsgif/LICENSE.txt": "1469b759cf18e43c6e1b4ff892307d3962cbbb337ac497620d6690a219fad10c"
+      }
+    },
+    {
+      "name": "libpng",
+      "version": "1.6.58",
+      "license_as_used_by_binary_packager": "libpng",
+      "source": "https://github.com/pnggroup/libpng/blob/v1.6.58/LICENSE",
+      "source_license_blob_sha": "1b765ae9f96abea77d3d9a88c543e3b5f4725813",
+      "license_files": [
+        "licenses/native/libvips/components/libpng/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libpng/LICENSE.txt": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526"
+      }
+    },
+    {
+      "name": "librsvg",
+      "version": "2.63.2",
+      "license_as_used_by_binary_packager": "LGPL-3.0-or-later",
+      "source": "https://github.com/GNOME/librsvg/blob/2.63.2/COPYING.LIB",
+      "source_license_blob_sha": "4362b49151d7b34ef83b3067a8f9c9f877d72a0e",
+      "license_files": [
+        "licenses/native/libvips/GPL-3.0-or-later.txt",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt",
+        "licenses/native/libvips/components/librsvg/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/librsvg/LICENSE.txt": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt": "d2db3fe538e9ecb8aac723a2bc51d27dfa81aa880ad3fc20c203966ec908dc6e",
+        "licenses/native/libvips/GPL-3.0-or-later.txt": "203c10ae2f92356d658522ee61db97e5daad634c5dc4190bc0bd23a1511a33b4"
+      }
+    },
+    {
+      "name": "libtiff",
+      "version": "4.7.2",
+      "license_as_used_by_binary_packager": "libtiff (BSD-like)",
+      "source": "https://gitlab.com/libtiff/libtiff/-/tree/v4.7.2",
+      "source_license_blob_sha": null,
+      "license_files": [
+        "licenses/native/libvips/components/libtiff/LICENSE.md"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libtiff/LICENSE.md": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade"
+      }
+    },
+    {
+      "name": "libultrahdr",
+      "version": "2.0.2",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://github.com/google/libultrahdr/blob/v2.0.2/LICENSE",
+      "source_license_blob_sha": "1299fcf3566f2c1f1912218f7e6ac8db325f16c1",
+      "license_files": [
+        "licenses/native/libvips/components/libultrahdr/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libultrahdr/LICENSE.txt": "c9247b5cb07866938643cc238292434e6f2af8642e1fce10771c0e4cc7909316"
+      }
+    },
+    {
+      "name": "libvips",
+      "version": "8.18.7",
+      "license_as_used_by_binary_packager": "LGPL-3.0-or-later",
+      "source": "https://github.com/libvips/libvips/tree/v8.18.7",
+      "source_license_blob_sha": null,
+      "license_files": [
+        "licenses/native/libvips/GPL-3.0-or-later.txt",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt",
+        "licenses/native/libvips/UPSTREAM_WINDOWS_LICENSE.txt",
+        "licenses/native/libvips/libvips-LGPL-2.1.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/UPSTREAM_WINDOWS_LICENSE.txt": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+        "licenses/native/libvips/libvips-LGPL-2.1.txt": "7c6699c75f87b52bdc542db26d6b1b92892577cda46e20eceb79e2790a1c291b",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt": "d2db3fe538e9ecb8aac723a2bc51d27dfa81aa880ad3fc20c203966ec908dc6e",
+        "licenses/native/libvips/GPL-3.0-or-later.txt": "203c10ae2f92356d658522ee61db97e5daad634c5dc4190bc0bd23a1511a33b4"
+      }
+    },
+    {
+      "name": "libwebp",
+      "version": "1.6.0",
+      "license_as_used_by_binary_packager": "BSD-3-Clause",
+      "source": "https://github.com/webmproject/libwebp/blob/v1.6.0/COPYING",
+      "source_license_blob_sha": "7a6f99547d4d6b4c5e6d5321acfaeba313e08de3",
+      "license_files": [
+        "licenses/native/libvips/components/libwebp/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libwebp/LICENSE.txt": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"
+      }
+    },
+    {
+      "name": "libxml2",
+      "version": "2.15.4",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://github.com/GNOME/libxml2/blob/v2.15.4/Copyright",
+      "source_license_blob_sha": "8c0b7c15dd9b66501511f5971ec9cae971997a0d",
+      "license_files": [
+        "licenses/native/libvips/components/libxml2/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/libxml2/LICENSE.txt": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626"
+      }
+    },
+    {
+      "name": "mozjpeg",
+      "version": "0826579",
+      "license_as_used_by_binary_packager": "Zlib AND IJG AND BSD-3-Clause",
+      "source": "https://github.com/mozilla/mozjpeg/blob/0826579/LICENSE.md",
+      "source_license_blob_sha": "a785258bcdaeb20de639c6a060a7e3d5df17ae8f",
+      "license_files": [
+        "licenses/native/libvips/components/mozjpeg/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/mozjpeg/LICENSE.txt": "96f5b328adbb78eeaaec6980d73fd558cb1e4d62560ed615646bc3cf5e532430"
+      }
+    },
+    {
+      "name": "pango",
+      "version": "1.58.2",
+      "license_as_used_by_binary_packager": "LGPL-3.0-or-later",
+      "source": "https://github.com/GNOME/pango/blob/1.58.2/COPYING",
+      "source_license_blob_sha": "bf50f20de6ef55b52fe7832d3a4ed05f0c69d452",
+      "license_files": [
+        "licenses/native/libvips/GPL-3.0-or-later.txt",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt",
+        "licenses/native/libvips/components/pango/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/pango/LICENSE.txt": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt": "d2db3fe538e9ecb8aac723a2bc51d27dfa81aa880ad3fc20c203966ec908dc6e",
+        "licenses/native/libvips/GPL-3.0-or-later.txt": "203c10ae2f92356d658522ee61db97e5daad634c5dc4190bc0bd23a1511a33b4"
+      }
+    },
+    {
+      "name": "pixman",
+      "version": "0.46.4",
+      "license_as_used_by_binary_packager": "MIT",
+      "source": "https://gitlab.freedesktop.org/pixman/pixman/-/tree/pixman-0.46.4",
+      "source_license_blob_sha": null,
+      "license_files": [
+        "licenses/native/libvips/components/pixman/COPYING"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/pixman/COPYING": "fac9270f0987b96ff4533fca3548c633e02083cbba4a0172a3b149b2e4019793"
+      }
+    },
+    {
+      "name": "proxy-libintl",
+      "version": "0.5",
+      "license_as_used_by_binary_packager": "LGPL-3.0-or-later",
+      "source": "https://github.com/frida/proxy-libintl/blob/0.5/COPYING",
+      "source_license_blob_sha": "bf50f20de6ef55b52fe7832d3a4ed05f0c69d452",
+      "license_files": [
+        "licenses/native/libvips/GPL-3.0-or-later.txt",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt",
+        "licenses/native/libvips/components/proxy-libintl/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/proxy-libintl/LICENSE.txt": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5",
+        "licenses/native/libvips/LGPL-3.0-or-later.txt": "d2db3fe538e9ecb8aac723a2bc51d27dfa81aa880ad3fc20c203966ec908dc6e",
+        "licenses/native/libvips/GPL-3.0-or-later.txt": "203c10ae2f92356d658522ee61db97e5daad634c5dc4190bc0bd23a1511a33b4"
+      }
+    },
+    {
+      "name": "zlib-ng",
+      "version": "2.3.3",
+      "license_as_used_by_binary_packager": "Zlib",
+      "source": "https://github.com/zlib-ng/zlib-ng/blob/2.3.3/LICENSE.md",
+      "source_license_blob_sha": "e866d7ac18620a2229727e3a0512ab688176cbd8",
+      "license_files": [
+        "licenses/native/libvips/components/zlib-ng/LICENSE.txt"
+      ],
+      "license_file_sha256": {
+        "licenses/native/libvips/components/zlib-ng/LICENSE.txt": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee"
+      }
+    }
+  ],
+  "public_source_scope": "Source publishing and dependency notices are authorized. No public binary release asset is included by this inventory.",
+  "public_binary_gate": {
+    "verified": false,
+    "remaining": "Verify complete corresponding native source, build modifications and a workable LGPL combined-library/relink arrangement before public native binary redistribution. Version URLs/notices alone are not that verification."
+  },
+  "license_retrieval_receipts": [
+    {
+      "name": "aom",
+      "source_archive_url": "https://storage.googleapis.com/aom-releases/libaom-3.15.1.tar.gz",
+      "source_archive_sha256": "8ca0c52746174603500f0adb6f2a215d69c9ca2aab2acb3caa06fb791d8d01bf",
+      "source_archive_bytes": 6623477,
+      "license_files": [
+        "licenses/native/libvips/components/aom/AUTHORS",
+        "licenses/native/libvips/components/aom/LICENSE",
+        "licenses/native/libvips/components/aom/PATENTS"
+      ]
+    },
+    {
+      "name": "cairo",
+      "source_archive_url": "https://cairographics.org/releases/cairo-1.18.6.tar.xz",
+      "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)>"
+    },
+    {
+      "name": "pixman",
+      "source_archive_url": "https://cairographics.org/releases/pixman-0.46.4.tar.gz",
+      "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)>"
+    },
+    {
+      "name": "fontconfig",
+      "source_archive_url": "https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/2.18.3/fontconfig-2.18.3.tar.gz",
+      "source_archive_sha256": "9ae01e1d53acdef56010c5451cd34aa41d325b2faccd8606448d8fa01b2496b3",
+      "source_archive_bytes": 666753,
+      "license_files": [
+        "licenses/native/libvips/components/fontconfig/AUTHORS",
+        "licenses/native/libvips/components/fontconfig/COPYING"
+      ]
+    },
+    {
+      "name": "libtiff",
+      "source_archive_url": "https://gitlab.com/libtiff/libtiff/-/archive/v4.7.2/libtiff-v4.7.2.tar.gz",
+      "source_archive_sha256": "62b15f44c10106065211efa22a2dc77937bd97ee1f6e3afd2c9659010de112eb",
+      "source_archive_bytes": 2616788,
+      "license_files": [
+        "licenses/native/libvips/components/libtiff/LICENSE.md"
+      ]
+    },
+    {
+      "name": "cairo",
+      "source_url": "https://gitlab.freedesktop.org/cairo/cairo/-/raw/1.18.6/COPYING",
+      "sha256": "67228a9f7c5f9b67c58f556f1be178f62da4d9e2e6285318d8c74d567255abdf",
+      "file": "licenses/native/libvips/components/cairo/COPYING"
+    },
+    {
+      "name": "cairo",
+      "source_url": "https://gitlab.freedesktop.org/cairo/cairo/-/raw/1.18.6/COPYING-MPL-1.1",
+      "sha256": "53692a2ed6c6a2c6ec9b32dd0b820dfae91e0a1fcdf625ca9ed0bdf8705fcc4f",
+      "file": "licenses/native/libvips/components/cairo/COPYING-MPL-1.1"
+    },
+    {
+      "name": "cairo",
+      "source_url": "https://gitlab.freedesktop.org/cairo/cairo/-/raw/1.18.6/COPYING-LGPL-2.1",
+      "sha256": "9e9e8608c4cdda51a78cc3a385f4ec9a2e4c96d5ecad74ac8bca5fca3e563b7d",
+      "file": "licenses/native/libvips/components/cairo/COPYING-LGPL-2.1"
+    },
+    {
+      "name": "pixman",
+      "source_url": "https://gitlab.freedesktop.org/pixman/pixman/-/raw/pixman-0.46.4/COPYING",
+      "sha256": "fac9270f0987b96ff4533fca3548c633e02083cbba4a0172a3b149b2e4019793",
+      "file": "licenses/native/libvips/components/pixman/COPYING"
+    },
+    {
+      "name": "cgif",
+      "file": "licenses/native/libvips/components/cgif/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/dloebl/cgif/v0.5.4/LICENSE",
+      "source_blob_sha": "752e9cbd026d24ab7c3eb917b493bb91d0e35e9a",
+      "sha256": "7264dede477abab4ac3fe8236beb8153845c04ccd33b18f281085087e219fc6d"
+    },
+    {
+      "name": "expat",
+      "file": "licenses/native/libvips/components/expat/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/libexpat/libexpat/R_2_8_5/COPYING",
+      "source_blob_sha": "1fe8abbe1c5e562d56c90d8ec4a7921210d05319",
+      "sha256": "73cc92f80889ab23c7287b1a11dd50fdec190c3f26ebe5938c579043817d651e"
+    },
+    {
+      "name": "harfbuzz",
+      "file": "licenses/native/libvips/components/harfbuzz/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/harfbuzz/harfbuzz/14.5.0/COPYING",
+      "source_blob_sha": "1dd917e9f2e72167de69e3b5dadbc4e7db417da1",
+      "sha256": "ba8f810f2455c2f08e2d56bb49b72f37fcf68f1f4fade38977cfd7372050ad64"
+    },
+    {
+      "name": "highway",
+      "file": "licenses/native/libvips/components/highway/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/google/highway/1.4.0/LICENSE",
+      "source_blob_sha": "1af4f15ca709c0e74e610c09fe91022f354aea58",
+      "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af"
+    },
+    {
+      "name": "lcms",
+      "file": "licenses/native/libvips/components/lcms/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/mm2/Little-CMS/lcms2.19.1/LICENSE",
+      "source_blob_sha": "85480b50b0c5860b541dc3b0032084c55ca91dcd",
+      "sha256": "6dbd60437f8ef91d8de1f08ad75882547fd4931bfcc3566a0735f28db1484d31"
+    },
+    {
+      "name": "libarchive",
+      "file": "licenses/native/libvips/components/libarchive/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/libarchive/libarchive/v3.8.9/COPYING",
+      "source_blob_sha": "9d0bcf81ff613bf5f36d71983b75e20cd0f69213",
+      "sha256": "30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229"
+    },
+    {
+      "name": "libffi",
+      "file": "licenses/native/libvips/components/libffi/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/libffi/libffi/v3.8.0/LICENSE",
+      "source_blob_sha": "90a8b230284e5cfbf02cbed3431116922bd84663",
+      "sha256": "17b64dc60f3b6897a60f971e288b973f655c2edcdf08b25f3c3dd5549857881c"
+    },
+    {
+      "name": "libimagequant",
+      "file": "licenses/native/libvips/components/libimagequant/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/lovell/libimagequant/v2.4.1/COPYRIGHT",
+      "source_blob_sha": "98de36b4d2678a2d9ae426033b14b8a012960c28",
+      "sha256": "7391bfbcde4404cefb9849553362c3ab436f929f5cc1abb57071ec045590ee99"
+    },
+    {
+      "name": "libpng",
+      "file": "licenses/native/libvips/components/libpng/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pnggroup/libpng/v1.6.58/LICENSE",
+      "source_blob_sha": "1b765ae9f96abea77d3d9a88c543e3b5f4725813",
+      "sha256": "bdb0a645ea18c60507d0368379b1ac5474b92255fcc2d115e07486a7672ba526"
+    },
+    {
+      "name": "libultrahdr",
+      "file": "licenses/native/libvips/components/libultrahdr/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/google/libultrahdr/v2.0.2/LICENSE",
+      "source_blob_sha": "1299fcf3566f2c1f1912218f7e6ac8db325f16c1",
+      "sha256": "c9247b5cb07866938643cc238292434e6f2af8642e1fce10771c0e4cc7909316"
+    },
+    {
+      "name": "libwebp",
+      "file": "licenses/native/libvips/components/libwebp/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/webmproject/libwebp/v1.6.0/COPYING",
+      "source_blob_sha": "7a6f99547d4d6b4c5e6d5321acfaeba313e08de3",
+      "sha256": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf"
+    },
+    {
+      "name": "mozjpeg",
+      "file": "licenses/native/libvips/components/mozjpeg/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/mozilla/mozjpeg/0826579/LICENSE.md",
+      "source_blob_sha": "a785258bcdaeb20de639c6a060a7e3d5df17ae8f",
+      "sha256": "96f5b328adbb78eeaaec6980d73fd558cb1e4d62560ed615646bc3cf5e532430"
+    },
+    {
+      "name": "zlib-ng",
+      "file": "licenses/native/libvips/components/zlib-ng/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/zlib-ng/zlib-ng/2.3.3/LICENSE.md",
+      "source_blob_sha": "e866d7ac18620a2229727e3a0512ab688176cbd8",
+      "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee"
+    },
+    {
+      "name": "freetype",
+      "file": "licenses/native/libvips/components/freetype/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/freetype/freetype/VER-2-14-3/docs/FTL.TXT",
+      "source_blob_sha": "b9e8cbd66ffff526113350953f4a2f4252a92f49",
+      "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f"
+    },
+    {
+      "name": "libnsgif",
+      "file": "licenses/native/libvips/components/libnsgif/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/libvips/libvips/v8.18.7/libvips/foreign/libnsgif/COPYING",
+      "source_blob_sha": "9334b89b3cdc8719225df60ca7deccf6996ea2d4",
+      "sha256": "1469b759cf18e43c6e1b4ff892307d3962cbbb337ac497620d6690a219fad10c"
+    },
+    {
+      "name": "fribidi",
+      "file": "licenses/native/libvips/components/fribidi/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/fribidi/fribidi/v1.0.17/COPYING",
+      "source_blob_sha": "f6683e74e0f0130f246dbf7054f4cacc88ca84b0",
+      "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+    },
+    {
+      "name": "libexif",
+      "file": "licenses/native/libvips/components/libexif/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/libexif/libexif/v0.6.26/COPYING",
+      "source_blob_sha": "602bfc94635ddf8f1bf2b00419a85ead645a5b67",
+      "sha256": "36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89"
+    },
+    {
+      "name": "libheif",
+      "file": "licenses/native/libvips/components/libheif/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/strukturag/libheif/v1.23.5/COPYING",
+      "source_blob_sha": "f80407e7d5827a93d97767679d3521991e62d8cb",
+      "sha256": "fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596"
+    },
+    {
+      "name": "glib",
+      "file": "licenses/native/libvips/components/glib/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/GNOME/glib/2.90.0/COPYING",
+      "source_blob_sha": "e818e737a7833b56367e795cef6ee0d992c6e667",
+      "sha256": "65986a89240f59896ce42a3779bbe5ed486a0bca7df636a8eef030fd2e1a0984"
+    },
+    {
+      "name": "librsvg",
+      "file": "licenses/native/libvips/components/librsvg/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/GNOME/librsvg/2.63.2/COPYING.LIB",
+      "source_blob_sha": "4362b49151d7b34ef83b3067a8f9c9f877d72a0e",
+      "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+    },
+    {
+      "name": "pango",
+      "file": "licenses/native/libvips/components/pango/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/GNOME/pango/1.58.2/COPYING",
+      "source_blob_sha": "bf50f20de6ef55b52fe7832d3a4ed05f0c69d452",
+      "sha256": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5"
+    },
+    {
+      "name": "proxy-libintl",
+      "file": "licenses/native/libvips/components/proxy-libintl/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/frida/proxy-libintl/0.5/COPYING",
+      "source_blob_sha": "bf50f20de6ef55b52fe7832d3a4ed05f0c69d452",
+      "sha256": "d245807f90032872d1438d741ed21e2490e1175dc8aa3afa5ddb6c8e529b58e5"
+    },
+    {
+      "name": "libxml2",
+      "file": "licenses/native/libvips/components/libxml2/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/GNOME/libxml2/v2.15.4/Copyright",
+      "source_blob_sha": "8c0b7c15dd9b66501511f5971ec9cae971997a0d",
+      "sha256": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626"
+    }
+  ],
+  "native_files": [
+    {
+      "distribution_relative_path": "_libvips.pyd",
+      "bytes": 90112,
+      "sha256": "6cac36f8fb6788eda639dc0e684251c78b7afb06570b908ebe16f672f0182775"
+    },
+    {
+      "distribution_relative_path": "libvips-42-06dab07cc386748513337a31672b1d52.dll",
+      "bytes": 19018240,
+      "sha256": "06dab07cc386748513337a31672b1d5269fbc770a14ff403080575665bf0813f"
+    }
+  ],
+  "inventory_limit": "Upstream declared native components, not an independent complete audit of all statically compiled Rust/C/C++ transitive code. Public binary corresponding-source/relink verification remains open."
+}
