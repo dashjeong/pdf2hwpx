@@ -1,5 +1,6 @@
 """Refresh notices/evidence and archive the complete offline Windows bundle."""
 from pathlib import Path
+import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -21,6 +22,11 @@ def sha256(path):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--name', default='ScanNote-0.1.0-Windows-x64-offline.zip')
+    args = parser.parse_args()
+    if Path(args.name).name != args.name or not args.name.endswith('.zip') or any(c in args.name for c in '/\\:'):
+        parser.error('Archive name must be a plain ZIP filename.')
     if not (BUNDLE / 'ScanEdit.exe').is_file():
         raise RuntimeError('Build the Windows bundle first.')
     attestation_path = BUNDLE / 'build-manifest.json'
@@ -45,7 +51,7 @@ def main():
         'build_attestation': 'build-manifest.json',
     }
     (BUNDLE / 'release-manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
-    archive_path = ROOT / 'dist' / 'ScanNote-0.1.0-Windows-x64-offline.zip'
+    archive_path = ROOT / 'dist' / args.name
     files = [p for p in sorted(BUNDLE.rglob('*')) if p.is_file() and p.relative_to(BUNDLE).parts[0] != 'data']
     with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=3, allowZip64=True) as archive:
         for path in files:
