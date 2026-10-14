@@ -21,10 +21,10 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', default='ScanNote-0.1.0-Windows-x64-offline.zip')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if Path(args.name).name != args.name or not args.name.endswith('.zip') or any(c in args.name for c in '/\\:'):
         parser.error('Archive name must be a plain ZIP filename.')
     if not (BUNDLE / 'ScanEdit.exe').is_file():

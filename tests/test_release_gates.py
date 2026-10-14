@@ -47,7 +47,7 @@ class ReleaseGateTests(unittest.TestCase):
             with patch.object(package_release, 'BUNDLE', bundle), \
                  patch.object(package_release, 'source_fingerprint', return_value={'app.py': 'new source'}):
                 with self.assertRaisesRegex(RuntimeError, 'changed after build'):
-                    package_release.main()
+                    package_release.main([])
             self.assertFalse((bundle / 'release-manifest.json').exists())
 
     def test_public_bundle_excludes_all_internal_docs_and_sample_inputs(self):
