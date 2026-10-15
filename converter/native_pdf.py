@@ -1,4 +1,4 @@
-"""Positioned native PDF text with original graphics as a text-free background.
+"""Editable native PDF text, tables, vector form shapes and local pictures.
 
 This is text-layer extraction, not an OCR accuracy claim. Every native glyph is
 kept editable, including letters inside diagrams. No document leaves this PC.
@@ -17,6 +17,7 @@ import pypdfium2 as pdfium
 from PIL import Image
 
 from .ocr import _find_tables, _assign_table_text
+from .editable_graphics import native_pdf_shapes, extract_editable_graphics, apply_native_table_styles
 
 
 def _glyphs(page, width: int, height: int):
@@ -162,6 +163,14 @@ def recognize_native_pdf_page(page, image_path: Path, options: dict | None = Non
     options = options or {}
     if options.get("force_ocr"):
         return None
+    # Native coordinates currently assume an unrotated visible page origin.
+    # Use the rendered OCR path for /Rotate or shifted CropBox/MediaBox pages
+    # rather than placing correctly read text and form objects at wrong points.
+    if page.get_rotation() != 0:
+        return None
+    left, bottom, _, _ = page.get_bbox()
+    if abs(left) > 1e-6 or abs(bottom) > 1e-6:
+        return None
     image_path = Path(image_path)
     with Image.open(image_path) as source:
         rgb = np.asarray(source.convert("RGB"))
@@ -190,22 +199,20 @@ def recognize_native_pdf_page(page, image_path: Path, options: dict | None = Non
     outside = _group_lines([glyph for glyph in glyphs if glyph["index"] not in used])
     for table in tables:
         table["source"] = "native-pdf-text"
-    mask = np.zeros((height, width), np.uint8)
+    graphic_texts = []
     for glyph in nonspace:
         left, top, right, bottom = glyph["ink"]
-        x0, y0 = max(0, int(left) - 1), max(0, int(top) - 1)
-        x1, y1 = min(width, int(np.ceil(right)) + 1), min(height, int(np.ceil(bottom)) + 1)
-        mask[y0:y1, x0:x1] = 255
-    background = cv2.inpaint(image, mask, 3, cv2.INPAINT_TELEA)
-    name = f"{image_path.stem}-native-background.png"
-    Image.fromarray(cv2.cvtColor(background, cv2.COLOR_BGR2RGB)).save(image_path.parent / name)
-    blocks = [{"id": f"{image_path.stem}-native-background", "type": "image", "x": 0, "y": 0,
-               "width": width, "height": height, "image_url": f"/api/assets/{image_path.parent.name}/{name}",
-               "role": "graphics-background", "source": "native-pdf-graphics"}]
+        graphic_texts.append({"x": left, "y": top, "width": right - left, "height": bottom - top})
+    shapes, protected = native_pdf_shapes(page, width, height, tables)
+    blocks = extract_editable_graphics(image, graphic_texts, tables, image_path,
+                                      native_shapes=shapes, protected_rects=protected)
+    apply_native_table_styles(page, width, height, tables)
+    for index, block in enumerate(blocks):
+        block["id"] = f"{image_path.stem}-graphic-{index + 1}"
     for index, block in enumerate(sorted(outside + tables, key=lambda item: (item["y"], item["x"]))):
         block["id"] = f"{image_path.stem}-native-{index + 1}"
         blocks.append(block)
     return {"blocks": blocks, "engine": "native", "warnings": [
         "PDF에 포함된 원본 글자를 직접 추출했습니다. OCR 인식률을 측정한 결과가 아닙니다.",
-        "표·그림 배경을 보존하고 그림 속 글자도 편집 가능한 위치로 분리했습니다. 글꼴과 표 경계를 대조해 주세요."],
+        "글자·표·양식 테두리를 편집 가능한 객체로 분리하고 사진과 복잡한 그림은 해당 영역만 그림으로 보존했습니다. 원본과 대조해 주세요."],
         "native_characters": len(nonspace), "measured": False, "source": "native-pdf-text-layer"}

@@ -188,11 +188,15 @@ def recover_global_tables(page, records, blocks, engine, warnings):
         grid_preview[max(0, int(y0 / sy)):min(rgb.shape[0], math.ceil(y1 / sy)),
                      max(0, int(x0 / sx)):min(rgb.shape[1], math.ceil(x1 / sx))] = 255
     whole_tables, _ = _find_tables(cv2.cvtColor(grid_preview, cv2.COLOR_RGB2BGR))
+    from .editable_graphics import sample_table_styles
+    sample_table_styles(cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), whole_tables)
     for number, table in enumerate(whole_tables):
         mapped = copy.deepcopy(table)
         for target in [mapped] + mapped['cells']:
             for key, scale in (('x', sx), ('width', sx), ('y', sy), ('height', sy)):
                 target[key] = round(target[key] * scale, 2)
+            if 'border_width' in target:
+                target['border_width'] *= (sx + sy) / 2
         mapped['column_widths'] = [round(value * sx, 2) for value in mapped['column_widths']]
         mapped['row_heights'] = [round(value * sy, 2) for value in mapped['row_heights']]
         if _colored_empty_grid(mapped, rgb, sx, sy):
@@ -259,6 +263,10 @@ def recover_global_tables(page, records, blocks, engine, warnings):
                 scores.append(cell['confidence'])
             mapped['rows'][cell['row']][cell['col']] = cell['text']
         if clear:
+            fonts = [line.get('font_size', line.get('height', 20) * .78)
+                     for cell in mapped['cells'] for line in cell.get('text_blocks', [])]
+            if fonts:
+                mapped['font_size'] = float(np.median(fonts))
             mapped.update(type='table', confidence=sum(scores) / len(scores) if scores else None,
                           global_grid_recovered=True)
             recovered.append(mapped)

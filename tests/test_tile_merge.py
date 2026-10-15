@@ -39,6 +39,23 @@ def table(xs, ys, values, spans=None):
 
 
 class TileMergeTests(unittest.TestCase):
+    def test_overlapping_tile_form_rules_are_one_editable_line(self):
+        def shape(x, y, width, color='#000000'):
+            return {'type': 'shape', 'shape': 'line', 'x': x, 'y': y, 'width': width,
+                    'height': 0, 'points': [[0, 0], [width, 0]],
+                    'stroke_color': color, 'stroke_width': 1}
+        records = [record(0, 0, 300, 100, [0, 0, 250, 100], [shape(20, 30, 280)]),
+                   record(200, 0, 300, 100, [250, 0, 500, 100],
+                          [shape(0, 30, 250), shape(0, 36, 250)])]
+        originals = copy.deepcopy(records)
+        result = merge_tile_results({}, records, 'local')
+        lines = [b for b in result['blocks'] if b['type'] == 'shape']
+        self.assertEqual(len(lines), 2)
+        merged = next(b for b in lines if b['y'] == 30)
+        self.assertEqual((merged['x'], merged['width'], merged['height']), (20, 430, 0))
+        self.assertEqual(merged['points'], [[0, 0], [430, 0]])
+        self.assertEqual(records, originals)
+
     def test_audit_long_line_suffix_prefix_is_once_and_original_untouched(self):
         records = [record(0, 0, 336, 100, [0, 0, 272, 100], [line('LEFT OVERLAP', 100, 10, 236)]),
                    record(208, 0, 336, 100, [272, 0, 544, 100], [line('OVERLAP RIGHT', 0, 10, 292)])]

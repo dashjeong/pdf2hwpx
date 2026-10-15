@@ -1,6 +1,6 @@
 """Portable, spatial HWPX and editable HTML exports.
 
-HWPX uses editable floating drawing text, actual table cells and embedded PNGs.
+HWPX uses ordinary body paragraphs, actual table cells and embedded PNGs.
 The empty package is airmang/python-hwpx's Apache-2.0 Skeleton.hwpx; its license
 is distributed beside this module. Drawing child order follows that project's
 corpus-tested ``oxml/objects.py`` implementation rather than XSD inheritance
@@ -18,8 +18,10 @@ import base64
 from copy import deepcopy
 from datetime import datetime, timezone
 from html import escape
+from functools import lru_cache
 from io import BytesIO
 import math
+import os
 from pathlib import Path
 import re
 from tempfile import NamedTemporaryFile
@@ -27,7 +29,7 @@ from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as ET
 from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED
 
-from PIL import Image
+from PIL import Image, ImageFont
 
 NS = {
     "ha": "http://www.hancom.co.kr/hwpml/2011/app",
@@ -98,12 +100,53 @@ def _text(value) -> str:
     return _ILLEGAL_XML.sub("", str(value if value is not None else "")).replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _text_content(element, value):
+    """HWPX tabs/line breaks belong inside hp:t, not sibling runs."""
+    last = None
+    for piece in re.split(r"([\t\n])", _text(value)):
+        if piece in ("\t", "\n"):
+            last = _child(element, "hp:tab" if piece == "\t" else "hp:lineBreak")
+        elif last is None:
+            element.text = (element.text or "") + piece
+        else:
+            last.tail = (last.tail or "") + piece
+
+
 def _number(value, default=0.0) -> float:
     try:
         value = float(value)
     except (ValueError, TypeError, OverflowError):
         return default
     return value if math.isfinite(value) else default
+
+
+def _color(value, default="#000000"):
+    return value if isinstance(value, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", value) else default
+
+
+@lru_cache(maxsize=96)
+def _body_font(size, bold):
+    # Use the font already installed on Windows; never redistribute OS fonts.
+    path = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / ("malgunbd.ttf" if bold else "malgun.ttf")
+    try:
+        return ImageFont.truetype(str(path), max(1, round(size * 4)))
+    except OSError:
+        return None
+
+
+def _body_width_ratio(block, box):
+    if block.get("source") != "native-pdf-text" or block.get("text_edited"):
+        return 100
+    text = _text(block.get("text", ""))
+    if not text or "\n" in text or "\t" in text:
+        return 100
+    font = _body_font(_number(block.get("font_size"), 20), bool(block.get("bold")))
+    if font is None:
+        return 100
+    measured = font.getlength(text) / 4
+    # Native glyph bounds used the source font. Keep its physical font height
+    # and fit only horizontal glyph width when the installed font is wider.
+    return max(50, min(100, math.floor(100 * max(1, box[2] - 1) / max(1, measured))))
 
 
 def _page_geometry(page):
@@ -123,9 +166,66 @@ def _box(block, page):
     w, h = _number(block.get("width")), _number(block.get("height"))
     left, top = min(pw, max(0, x)), min(ph, max(0, y))
     right, bottom = min(pw, max(0, x + w)), min(ph, max(0, y + h))
+    if block.get("type") == "shape":
+        # A real horizontal/vertical line has zero area; keep its endpoints.
+        visible_x = right > left or (w == 0 and 0 <= x <= pw)
+        visible_y = bottom > top or (h == 0 and 0 <= y <= ph)
+        if w >= 0 and h >= 0 and (w > 0 or h > 0) and visible_x and visible_y:
+            return left, top, max(.01, right - left), max(.01, bottom - top)
     if right <= left or bottom <= top:
         return None
     return left, top, right - left, bottom - top
+
+
+def _clip_segment(a, b, width, height):
+    x, y = a
+    dx, dy = b[0] - x, b[1] - y
+    low, high = 0., 1.
+    for p, q in ((-dx, x), (dx, width - x), (-dy, y), (dy, height - y)):
+        if abs(p) < 1e-12:
+            if q < 0:
+                return None
+        else:
+            edge = q / p
+            if p < 0:
+                low = max(low, edge)
+            else:
+                high = min(high, edge)
+            if low > high:
+                return None
+    return ((x + low * dx, y + low * dy), (x + high * dx, y + high * dy))
+
+
+def _shape_geometry(block, box):
+    """Clip source points together with their box, never shift a cropped rule."""
+    kind = block.get("shape", "rect")
+    bw, bh = _number(block.get("width")), _number(block.get("height"))
+    default = [[0, 0], [bw, bh]] if kind == "line" else [[0, 0], [bw, 0], [bw, bh], [0, bh]]
+    points = block.get("points") or default
+    if not isinstance(points, list) or not 2 <= len(points) <= 10000 or any(not isinstance(p, (list, tuple)) or len(p) != 2 for p in points):
+        raise ValueError("도형 좌표가 올바르지 않습니다.")
+    dx, dy = _number(block.get("x")) - box[0], _number(block.get("y")) - box[1]
+    points = [(_number(px) + dx, _number(py) + dy) for px, py in points]
+    closed = kind == "rect" or bool(block.get("closed", False))
+    if not closed:
+        segments = [segment for a, b in zip(points, points[1:])
+                    if (segment := _clip_segment(a, b, box[2], box[3])) is not None]
+        return points, segments, False
+    for axis, edge, keep_greater in ((0, 0, True), (0, box[2], False), (1, 0, True), (1, box[3], False)):
+        clipped = []
+        if not points:
+            break
+        previous = points[-1]
+        inside = lambda p: p[axis] >= edge if keep_greater else p[axis] <= edge
+        for current in points:
+            if inside(current) != inside(previous):
+                fraction = (edge - previous[axis]) / (current[axis] - previous[axis])
+                clipped.append(tuple(previous[i] + fraction * (current[i] - previous[i]) for i in (0, 1)))
+            if inside(current):
+                clipped.append(current)
+            previous = current
+        points = clipped
+    return points, [], True
 
 
 def _asset_path(url: str, asset_root: Path, document_id=None) -> Path:
@@ -235,6 +335,56 @@ def _table_grid(block, box):
     return rows, spans, covered, boundaries(xs, nc, width), boundaries(ys, nr, height)
 
 
+def _body_lines(page):
+    """Join same-line font fragments into body paragraphs, never drawing boxes.
+
+    OCR/native PDF fragments can split a sentence at a font change. Retain each
+    fragment and its style while putting one visual line in one body paragraph.
+    Explicit edited newlines become separate, freely editable paragraphs.
+    """
+    fragments = []
+    for source_index, block in enumerate(page.get("blocks", [])):
+        if block.get("type") != "text":
+            continue
+        box = _box(block, page)
+        if box is None:
+            continue
+        pieces = _text(block.get("text", "")).split("\n")
+        x, y, w, h = box
+        for index, piece in enumerate(pieces):
+            fragments.append((dict(block, text=piece, _body_source=source_index, _body_line=index),
+                              (x, y + h * index / len(pieces), w, h / len(pieces))))
+    lines = []
+    for block, box in sorted(fragments, key=lambda item: (item[1][1], item[1][0])):
+        x, y, w, h = box
+        middle = y + h / 2
+        matching = None
+        for line in reversed(lines):
+            lx, ly, lw, lh = line["box"]
+            if y > ly + lh:
+                break
+            # Explicit user line breaks are semantic paragraph boundaries even
+            # if twenty edited lines still share the original small OCR box.
+            if any(other["_body_source"] == block["_body_source"] and
+                   other["_body_line"] != block["_body_line"] for other, _ in line["fragments"]):
+                continue
+            centers_align = abs(middle - (ly + lh / 2)) <= max(2, min(h, lh) * 0.35)
+            bottoms_align = abs((y + h) - (ly + lh)) <= max(2, min(h, lh) * 0.2)
+            if centers_align or bottoms_align:
+                matching = line
+                break
+        if matching is None:
+            lines.append({"box": box, "fragments": [(block, box)]})
+        else:
+            lx, ly, lw, lh = matching["box"]
+            right, bottom = max(lx + lw, x + w), max(ly + lh, y + h)
+            matching["box"] = (min(lx, x), min(ly, y), right - min(lx, x), bottom - min(ly, y))
+            matching["fragments"].append((block, box))
+    for line in lines:
+        line["fragments"].sort(key=lambda item: item[1][0])
+    return sorted(lines, key=lambda line: (line["box"][1], line["box"][0]))
+
+
 class _Builder:
     def __init__(self, header):
         self.header = header
@@ -253,31 +403,40 @@ class _Builder:
         para.set("snapToGrid", "0")
         for spacing in para.findall(".//hh:lineSpacing", NS):
             spacing.set("value", "100")
-        borders = header.find("hh:refList/hh:borderFills", NS)
-        border = deepcopy(borders[0])
+        self.paras = header.find("hh:refList/hh:paraProperties", NS)
+        self.base_para = deepcopy(para)
+        self.para_ids = {}
+        self.tabs = header.find("hh:refList/hh:tabProperties", NS)
+        self.tab_ids = {}
+        self.borders = header.find("hh:refList/hh:borderFills", NS)
+        self.base_border = deepcopy(self.borders[0])
+        self.border_ids = {}
+        border = deepcopy(self.base_border)
         border.set("id", "3")
         for side in ("leftBorder", "rightBorder", "topBorder", "bottomBorder"):
             border.find("hh:" + side, NS).set("type", "SOLID")
-        borders.append(border)
-        borders.set("itemCnt", str(len(borders)))
+        self.borders.append(border)
+        self.borders.set("itemCnt", str(len(self.borders)))
 
     def id(self):
         self.counter += 1
         return str(self.counter)
 
-    def char(self, block, scale):
+    def char(self, block, scale, width_ratio=100):
         size = max(100, min(10000, round(_number(block.get("font_size"), 20) * scale)))
         bold = bool(block.get("bold", False))
         color = str(block.get("color", "#000000"))
         if not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
             color = "#000000"
-        key = (size, bold, color)
+        key = (size, bold, color, width_ratio)
         if key not in self.char_ids:
             prop = deepcopy(self.base_char)
             ident = str(len(self.chars))
             prop.set("id", ident)
             prop.set("height", str(size))
             prop.set("textColor", color)
+            ratio = prop.find("hh:ratio", NS)
+            ratio.attrib.update({key: str(width_ratio) for key in ratio.attrib})
             prop.find("hh:fontRef", NS).attrib.update({k: "0" for k in prop.find("hh:fontRef", NS).attrib})
             if bold:
                 _child(prop, "hh:bold")
@@ -286,16 +445,71 @@ class _Builder:
             self.char_ids[key] = ident
         return self.char_ids[key]
 
-    def paragraph(self, parent, text, char_id="0"):
-        p = _child(parent, "hp:p", id=self.id(), paraPrIDRef="0", styleIDRef="0", pageBreak="0", columnBreak="0", merged="0")
+    def paragraph(self, parent, text, char_id="0", para_id="0"):
+        p = _child(parent, "hp:p", id=self.id(), paraPrIDRef=para_id, styleIDRef="0", pageBreak="0", columnBreak="0", merged="0")
         run = _child(p, "hp:run", charPrIDRef=char_id)
         t = _child(run, "hp:t")
-        pieces = _text(text).split("\n")
-        t.text = pieces[0]
-        for piece in pieces[1:]:
-            br = _child(t, "hp:lineBreak")
-            br.tail = piece
+        _text_content(t, text)
         return p
+
+    def body_style(self, left, before, height, tab_stops=()):
+        key = (left, before, height, tuple(tab_stops))
+        if key not in self.para_ids:
+            prop = deepcopy(self.base_para)
+            ident = str(len(self.paras))
+            prop.set("id", ident)
+            if tab_stops:
+                if tuple(tab_stops) not in self.tab_ids:
+                    tab_id = str(len(self.tabs))
+                    tabs = _child(self.tabs, "hh:tabPr", id=tab_id, autoTabLeft="0", autoTabRight="0")
+                    for position in tab_stops:
+                        _child(tabs, "hh:tabItem", pos=position, type="LEFT", leader="NONE")
+                    self.tabs.set("itemCnt", str(len(self.tabs)))
+                    self.tab_ids[tuple(tab_stops)] = tab_id
+                prop.set("tabPrIDRef", self.tab_ids[tuple(tab_stops)])
+            for margin in prop.findall(".//hh:margin", NS):
+                for name, value in (("intent", 0), ("left", left), ("right", 0), ("prev", before), ("next", 0)):
+                    margin.find("hc:" + name, NS).set("value", str(value))
+            for spacing in prop.findall(".//hh:lineSpacing", NS):
+                spacing.attrib.update(type="FIXED", value=str(height), unit="HWPUNIT")
+            self.paras.append(prop)
+            self.paras.set("itemCnt", str(len(self.paras)))
+            self.para_ids[key] = ident
+        return self.para_ids[key]
+
+    def body_text(self, section, line, scale, page_width, cursor):
+        x, y, w, h = line["box"]
+        left, top = round(x * scale), round(y * scale)
+        font_height = max(int(self.chars[int(self.char(block, scale))].get("height"))
+                          for block, _ in line["fragments"])
+        height = max(1, round(h * scale), font_height)
+        tab_stops = []
+        previous_right = None
+        fragments = []
+        for block, box in line["fragments"]:
+            gap = 0 if previous_right is None else max(0, box[0] - previous_right)
+            font = _number(block.get("font_size"), 20)
+            separator = "" if gap <= max(1, font * .15) else " "
+            if gap > max(6, font):
+                # Hancom tab stops are measured from the page's text origin,
+                # independently of this paragraph's left indentation.
+                tab_stops.append(round(box[0] * scale))
+                separator = "\t"
+            fragments.append((block, separator, _body_width_ratio(block, box)))
+            previous_right = box[0] + box[2]
+        para_id = self.body_style(left, max(0, top - cursor), height, tab_stops)
+        p = _child(section, "hp:p", id=self.id(), paraPrIDRef=para_id, styleIDRef="0", pageBreak="0", columnBreak="0", merged="0")
+        for block, separator, width_ratio in fragments:
+            run = _child(p, "hp:run", charPrIDRef=self.char(block, scale, width_ratio))
+            t = _child(run, "hp:t")
+            _text_content(t, separator + _text(block.get("text", "")))
+        # Initial layout cache restores the scanned line position. The paragraph
+        # margins/spacing above also support normal text reflow after editing.
+        segments = _child(p, "hp:linesegarray")
+        _child(segments, "hp:lineseg", textpos="0", vertpos=top, vertsize=height,
+               textheight=font_height, baseline=round(font_height * .85), spacing="0",
+               horzpos=left, horzsize=max(1, round(page_width * scale) - left), flags="393216")
+        return max(cursor, top) + height
 
     def sublist(self, parent, text, char_id, width, height):
         sub = _child(parent, "hp:subList", id=self.id(), textDirection="HORIZONTAL", lineWrap="BREAK", vertAlign="TOP", linkListIDRef="0", linkListNextIDRef="0", textWidth=width, textHeight=height, hasTextRef="0", hasNumRef="0")
@@ -322,23 +536,14 @@ class _Builder:
             ET.SubElement(render, _tag("hc:" + name), dict(_MATRIX))
         return shape, w, h
 
-    def text(self, run, block, box, scale, zorder):
-        shape, w, h = self.drawing(run, "rect", box, scale, zorder)
-        shape.set("ratio", "0")
-        _child(shape, "hp:lineShape", color="#000000", width="0", style="NONE", endCap="FLAT", headStyle="NORMAL", tailStyle="NORMAL", headfill="0", tailfill="0", headSz="SMALL_SMALL", tailSz="SMALL_SMALL", outlineStyle="NORMAL", alpha="0")
-        _child(shape, "hp:shadow", type="NONE", color="#B2B2B2", offsetX="0", offsetY="0", alpha="0")
-        draw = _child(shape, "hp:drawText", lastWidth=w, name=_text(block.get("id", "text")), editable="1")
-        sub = self.sublist(draw, block.get("text", ""), self.char(block, scale), w, h)
-        if "\n" not in _text(block.get("text", "")):
-            sub.set("lineWrap", "KEEP")
-        ET.SubElement(draw, _tag("hp:textMargin"), dict(_MARGIN))
-        for i, (px, py) in enumerate(((0, 0), (w, 0), (w, h), (0, h))):
-            _child(shape, "hc:pt" + str(i), x=px, y=py)
-        self.floating_position(shape, box, scale)
-
-    def picture(self, run, box, scale, binary_id, zorder):
+    def picture(self, run, box, scale, binary_id, zorder, background=False):
         shape, w, h = self.drawing(run, "pic", box, scale, zorder)
+        if background:
+            shape.set("textWrap", "BEHIND_TEXT")
         shape.set("reverse", "0")
+        _child(shape, "hp:lineShape", color="#000000", width="0", style="NONE", endCap="FLAT",
+               headStyle="NORMAL", tailStyle="NORMAL", headfill="0", tailfill="0",
+               headSz="SMALL_SMALL", tailSz="SMALL_SMALL", outlineStyle="NORMAL", alpha="0")
         rect = _child(shape, "hp:imgRect")
         for i, (px, py) in enumerate(((0, 0), (w, 0), (w, h), (0, h))):
             _child(rect, "hc:pt" + str(i), x=px, y=py)
@@ -349,12 +554,91 @@ class _Builder:
         _child(shape, "hp:effects")
         self.floating_position(shape, box, scale)
 
+    def shape(self, run, block, box, scale, zorder):
+        kind = block.get("shape", "rect")
+        if kind not in {"line", "rect", "polyline"}:
+            raise ValueError("지원하지 않는 도형입니다.")
+        points, segments, closed = _shape_geometry(block, box)
+        if (closed and not points) or (not closed and not segments):
+            return
+        fill = _color(block.get("fill_color"), None)
+        if kind == "rect" and (box[0] != _number(block.get("x")) or box[1] != _number(block.get("y")) or
+                               box[2] != _number(block.get("width")) or box[3] != _number(block.get("height"))):
+            kind = "polyline"
+        tag = "line" if kind == "line" else "rect" if kind == "rect" else "polygon" if closed else "curve"
+        shape, w, h = self.drawing(run, tag, box, scale, zorder)
+        # The form remains a genuine selectable drawing object. Its label is
+        # ordinary body text above it, including labels on coloured rectangles.
+        shape.set("textWrap", "BEHIND_TEXT")
+        if kind == "rect":
+            shape.set("ratio", "0")
+        elif kind == "line":
+            shape.set("isReverseHV", "0")
+        _child(shape, "hp:lineShape", color=_color(block.get("stroke_color")),
+               width=max(1, round(max(.01, _number(block.get("stroke_width"), 1)) * scale)),
+               style="SOLID" if block.get("stroke_color", "#000000") is not None and _number(block.get("stroke_width"), 1) > 0 else "NONE",
+               endCap="FLAT", headStyle="NORMAL", tailStyle="NORMAL", headfill="0", tailfill="0",
+               headSz="SMALL_SMALL", tailSz="SMALL_SMALL", outlineStyle="NORMAL", alpha="0")
+        if fill and kind != "line":
+            brush = _child(shape, "hc:fillBrush")
+            _child(brush, "hc:winBrush", faceColor=fill, hatchColor="#000000", alpha="0")
+        _child(shape, "hp:shadow", type="NONE", color="#B2B2B2", offsetX="0", offsetY="0", alpha="0")
+        if kind == "rect":
+            for index, (px, py) in enumerate(((0, 0), (w, 0), (w, h), (0, h))):
+                _child(shape, "hc:pt" + str(index), x=px, y=py)
+        else:
+            local = [(round(px * scale), round(py * scale)) for px, py in points]
+            if kind == "line":
+                for name, (px, py) in zip(("startPt", "endPt"), segments[0]):
+                    px, py = round(px * scale), round(py * scale)
+                    _child(shape, "hc:" + name, x=px, y=py)
+            elif closed:
+                for px, py in local:
+                    _child(shape, "hc:pt", x=px, y=py)
+            else:
+                for a, b in segments:
+                    _child(shape, "hp:seg", type="LINE", x1=round(a[0] * scale), y1=round(a[1] * scale),
+                           x2=round(b[0] * scale), y2=round(b[1] * scale))
+        self.floating_position(shape, box, scale)
+
+    def border_fill(self, style, scale):
+        edges = []
+        borders = style.get("borders") if isinstance(style.get("borders"), dict) else {}
+        for side in ("left", "right", "top", "bottom"):
+            edge = borders.get(side) if isinstance(borders.get(side), dict) else {}
+            color = _color(edge.get("color", style.get("border_color")))
+            px = _number(edge.get("width", style.get("border_width")), .1 * 7200 / (scale * 25.4))
+            visible = edge.get("color", style.get("border_color", "#000000")) is not None and px > 0
+            width = max(.1, min(5, px * scale * 25.4 / 7200))
+            # HWPX table-border thickness has discrete millimetre values.
+            width = min((.1, .12, .15, .2, .25, .3, .4, .5, .6, .7, 1, 1.5, 2, 3, 4, 5), key=lambda v: abs(v - width))
+            edges.append((color, width, visible))
+        fill = _color(style.get("fill_color"), None)
+        key = (tuple(edges), fill)
+        if key not in self.border_ids:
+            border = deepcopy(self.base_border)
+            ident = str(max(int(b.get("id")) for b in self.borders) + 1)
+            border.set("id", ident)
+            for side, (color, width, visible) in zip(("leftBorder", "rightBorder", "topBorder", "bottomBorder"), edges):
+                border.find("hh:" + side, NS).attrib.update(type="SOLID" if visible else "NONE", color=color, width=f"{width:g} mm")
+            if fill:
+                brush = _child(border, "hc:fillBrush")
+                _child(brush, "hc:winBrush", faceColor=fill, hatchColor="#000000", alpha="0")
+            self.borders.append(border)
+            self.borders.set("itemCnt", str(len(self.borders)))
+            self.border_ids[key] = ident
+        return self.border_ids[key]
+
     def table(self, run, block, box, scale, zorder):
         rows, spans, covered, xs, ys = _table_grid(block, box)
-        table = _child(run, "hp:tbl", id=self.id(), zOrder=zorder, numberingType="TABLE", textWrap="IN_FRONT_OF_TEXT", textFlow="BOTH_SIDES", lock="0", dropcapstyle="None", pageBreak="NONE", repeatHeader="0", rowCnt=len(rows), colCnt=len(rows[0]), cellSpacing="0", borderFillIDRef="3", noAdjust="1")
+        border_id = self.border_fill(block, scale)
+        table = _child(run, "hp:tbl", id=self.id(), zOrder=zorder, numberingType="TABLE", textWrap="IN_FRONT_OF_TEXT", textFlow="BOTH_SIDES", lock="0", dropcapstyle="None", pageBreak="NONE", repeatHeader="0", rowCnt=len(rows), colCnt=len(rows[0]), cellSpacing="0", borderFillIDRef=border_id, noAdjust="1")
         self.floating_position(table, box, scale)
         ET.SubElement(table, _tag("hp:inMargin"), dict(_MARGIN))
         char_id = self.char(block, scale)
+        cells = block.get("cells", [])
+        styles = {(int(_number(c.get("row"), -1)), int(_number(c.get("col"), -1))): c
+                  for c in (cells if isinstance(cells, list) else []) if isinstance(c, dict)}
         for r, values in enumerate(rows):
             tr = _child(table, "hp:tr")
             for c, text in enumerate(values):
@@ -363,7 +647,8 @@ class _Builder:
                 rs, cs = spans.get((r, c), (1, 1))
                 w = max(1, round(xs[c + cs] * scale) - round(xs[c] * scale))
                 h = max(1, round(ys[r + rs] * scale) - round(ys[r] * scale))
-                tc = _child(tr, "hp:tc", name="", header="0", hasMargin="1", protect="0", editable="1", dirty="0", borderFillIDRef="3")
+                style = {**block, **styles.get((r, c), {})}
+                tc = _child(tr, "hp:tc", name="", header="0", hasMargin="1", protect="0", editable="1", dirty="0", borderFillIDRef=self.border_fill(style, scale))
                 sub = self.sublist(tc, text, char_id, w, h)
                 sub.set("vertAlign", "CENTER")
                 _child(tc, "hp:cellAddr", colAddr=c, rowAddr=r)
@@ -407,9 +692,13 @@ def _write_hwpx(document: dict, asset_root: Path, archive: ZipFile, *, bounded_i
     image_bytes_total = 0
     section_names = []
     for page_index, page in enumerate(pages):
+        if any(block.get("role") == "graphics-background" for block in page.get("blocks", [])):
+            from .editable_graphics import upgrade_legacy_page
+            page = upgrade_legacy_page(page, asset_root, document.get("id"))
         pw, ph, scale = _page_geometry(page)
         section = ET.Element(_tag("hs:sec"))
-        anchor = builder.paragraph(section, "")
+        anchor_char = builder.char({"font_size": 100 / scale}, scale)
+        anchor = builder.paragraph(section, "", anchor_char, builder.body_style(0, 0, 100))
         anchor.set("pageBreak", "1" if page_index else "0")
         anchor_run = anchor.find("hp:run", NS)
         sec_pr = deepcopy(sec_pr_template)
@@ -426,14 +715,16 @@ def _write_hwpx(document: dict, asset_root: Path, archive: ZipFile, *, bounded_i
             box = _box(block, page)
             if box is None:
                 continue
-            run = _child(anchor, "hp:run", charPrIDRef="0")
             kind = block.get("type")
             if kind == "text":
-                builder.text(run, block, box, scale, z)
                 preview.append(_text(block.get("text", "")))
-            elif kind == "table":
+                continue
+            run = _child(anchor, "hp:run", charPrIDRef=anchor_char)
+            if kind == "table":
                 builder.table(run, block, box, scale, z)
                 preview.extend("\t".join(map(_text, row)) for row in block.get("rows", []) if isinstance(row, list))
+            elif kind == "shape":
+                builder.shape(run, block, box, scale, z)
             elif kind == "image":
                 picture_counter += 1
                 binary_id = "image" + str(picture_counter)
@@ -444,9 +735,12 @@ def _write_hwpx(document: dict, asset_root: Path, archive: ZipFile, *, bounded_i
                 archive.writestr(name, image_payload)
                 del image_payload
                 _child(manifest, "opf:item", id=binary_id, href=name, **{"media-type": "image/png", "isEmbeded": "1"})
-                builder.picture(run, box, scale, binary_id, z)
+                builder.picture(run, box, scale, binary_id, z, block.get("role") == "graphics-background")
             else:
                 anchor.remove(run)
+        cursor = 100
+        for line in _body_lines(page):
+            cursor = builder.body_text(section, line, scale, pw, cursor)
         name = "Contents/section" + str(page_index) + ".xml"
         section_names.append(name)
         archive.writestr(name, _xml(section))
@@ -510,6 +804,9 @@ def _html_fragments(document: dict, asset_root: Path, *, bounded_images: bool):
     yield "<style>body{margin:0;background:#ddd;font-family:'Malgun Gothic',sans-serif}.page{position:relative;background:white;margin:20px auto;page-break-after:always}.block{position:absolute;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1}table{border-collapse:collapse;table-layout:fixed;white-space:pre-wrap}td{border:1px solid #000;padding:1px 2px;vertical-align:top;overflow-wrap:anywhere}[contenteditable]:focus{outline:2px solid #2563eb}@media print{body{background:white}.page{margin:0;break-after:page}}</style></head><body>"
     image_bytes_total = 0
     for page in document.get("pages", []):
+        if any(block.get("role") == "graphics-background" for block in page.get("blocks", [])):
+            from .editable_graphics import upgrade_legacy_page
+            page = upgrade_legacy_page(page, asset_root, document.get("id"))
         pw, ph, _ = _page_geometry(page)
         yield f'<section class="page" style="width:{pw:g}px;height:{ph:g}px">'
         for block in page.get("blocks", []):
@@ -533,19 +830,63 @@ def _html_fragments(document: dict, asset_root: Path, *, bounded_images: bool):
                     yield base64.b64encode(image_payload[start:start + 48 * 1024]).decode("ascii")
                 yield '">'
                 del image_payload
+            elif kind == "shape":
+                shape = block.get("shape", "rect")
+                stroke = _color(block.get("stroke_color")) if block.get("stroke_color", "#000000") is not None and _number(block.get("stroke_width"), 1) > 0 else "none"
+                fill = _color(block.get("fill_color"), "none")
+                line_width = max(.01, min(200, _number(block.get("stroke_width"), 1)))
+                shape_style = f'stroke="{stroke}" stroke-width="{line_width:g}" fill="{fill}"'
+                yield f'<svg xmlns="http://www.w3.org/2000/svg" class="block" aria-label="편집 가능한 양식 도형" style="{style};overflow:visible" viewBox="0 0 {w:g} {h:g}">'
+                points, segments, closed = _shape_geometry(block, box)
+                original_rect = shape == "rect" and box == tuple(_number(block.get(key)) for key in ("x", "y", "width", "height"))
+                if original_rect:
+                    yield f'<rect width="{w:g}" height="{h:g}" {shape_style}/>'
+                else:
+                    if closed:
+                        attrs = " ".join(f"{px:g},{py:g}" for px, py in points)
+                        yield f'<polygon points="{attrs}" {shape_style}/>'
+                    elif segments:
+                        if all(segments[i][1] == segments[i + 1][0] for i in range(len(segments) - 1)):
+                            local = [segments[0][0], *(b for _, b in segments)]
+                            attrs = " ".join(f"{px:g},{py:g}" for px, py in local)
+                            yield f'<polyline points="{attrs}" {shape_style}/>'
+                        else:
+                            path = " ".join(f"M{a[0]:g},{a[1]:g} L{b[0]:g},{b[1]:g}" for a, b in segments)
+                            yield f'<path d="{path}" {shape_style}/>'
+                yield '</svg>'
             elif kind == "table":
                 rows, spans, covered, xs, ys = _table_grid(block, box)
                 yield f'<table class="block" style="{style}"><colgroup>'
                 for i in range(len(rows[0])):
                     yield f'<col style="width:{(xs[i + 1] - xs[i]) / w * 100:g}%">'
                 yield "</colgroup><tbody>"
+                cells = block.get("cells", [])
+                cell_styles = {(int(_number(c.get("row"), -1)), int(_number(c.get("col"), -1))): c
+                               for c in (cells if isinstance(cells, list) else []) if isinstance(c, dict)}
                 for r, values in enumerate(rows):
                     yield f'<tr style="height:{ys[r + 1] - ys[r]:g}px">'
                     for c, text in enumerate(values):
                         if (r, c) in covered:
                             continue
                         rs, cs = spans.get((r, c), (1, 1))
-                        yield f'<td contenteditable="plaintext-only" rowspan="{rs}" colspan="{cs}">{escape(text)}</td>'
+                        cell = {**block, **cell_styles.get((r, c), {})}
+                        border = _color(cell.get("border_color"))
+                        border_width = max(0, min(200, _number(cell.get("border_width"), 1)))
+                        if cell.get("border_color", "#000000") is None:
+                            border_width = 0
+                        fill = _color(cell.get("fill_color"), "transparent")
+                        edge_style = ""
+                        borders = cell.get("borders") if isinstance(cell.get("borders"), dict) else {}
+                        for side in ("left", "right", "top", "bottom"):
+                            edge = borders.get(side)
+                            if not isinstance(edge, dict):
+                                continue
+                            color = _color(edge.get("color", border))
+                            width = max(0, min(200, _number(edge.get("width"), border_width)))
+                            if edge.get("color", color) is None:
+                                width = 0
+                            edge_style += f';border-{side}:{width:g}px solid {color}'
+                        yield f'<td contenteditable="plaintext-only" rowspan="{rs}" colspan="{cs}" style="border:{border_width:g}px solid {border};background:{fill}{edge_style}">{escape(text)}</td>'
                     yield "</tr>"
                 yield "</tbody></table>"
         yield "</section>"

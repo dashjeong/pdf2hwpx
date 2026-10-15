@@ -1,5 +1,6 @@
 """Create fully offline portable Windows package; no online calls during launch."""
 from pathlib import Path
+import argparse
 import shutil
 import subprocess
 import sys
@@ -12,7 +13,10 @@ from public_bundle import refresh_public_content
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--incremental', action='store_true', help='Reuse PyInstaller analysis; input/output hashes are still checked.')
+    args = parser.parse_args(argv)
     source_before = source_fingerprint()
     required = [ROOT / 'models' / 'korean_PP-OCRv5_rec_mobile.onnx', ROOT / 'converter' / 'Skeleton.hwpx', ROOT / 'web' / 'app.js']
     for path in required:
@@ -31,6 +35,8 @@ def main():
                '--hidden-import', 'uvicorn.protocols.http.h11_impl', '--hidden-import', 'uvicorn.lifespan.on',
                str(ROOT / 'run.py')]
     build_env = {**os.environ, 'PYINSTALLER_CONFIG_DIR': str(ROOT / 'build' / 'pyinstaller-cache')}
+    if args.incremental:
+        command.remove('--clean')
     subprocess.run(command, cwd=ROOT, check=True, env=build_env)
     bundle = ROOT / 'dist' / 'ScanEdit'
     if (ROOT / 'runtime' / 'llama').exists():

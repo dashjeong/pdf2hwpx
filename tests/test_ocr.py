@@ -217,9 +217,10 @@ class OcrLayoutTests(unittest.TestCase):
         self.assertEqual(len(tables[0]["rows"]), 3)
         self.assertEqual(len(tables[0]["rows"][0]), 2)
 
-    def test_scaled_graphics_background_does_not_restore_old_text(self):
+    def test_scaled_graphics_are_local_and_do_not_restore_old_text(self):
         image = np.full((100, 100, 3), 255, np.uint8)
         image[20:30, 20:30] = 0
+        image[60:85, 65:90] = np.random.default_rng(0).integers(0, 220, (25, 25, 3), dtype=np.uint8)
         blocks = [{"type": "text", "x": 40, "y": 40, "width": 20, "height": 20, "text": "edited", "font_size": 20},
                   {"type": "image", "x": 20, "y": 20, "width": 80, "height": 80, "role": "graphics-background"}]
         build = Path(__file__).resolve().parents[1] / "build"
@@ -227,9 +228,14 @@ class OcrLayoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=build) as folder:
             source = Path(folder) / "source.png"
             result = ocr._remap_source_blocks(blocks, image, np.array([[.5, 0, 0], [0, .5, 0]], np.float64), source)
-            background = np.asarray(Image.open(Path(folder) / "source-figure-2.png"))
-            self.assertGreater(int(background[10:20, 10:20].mean()), 245)
             self.assertEqual(result[0]["font_size"], 10)
+            self.assertEqual(result[0]["text"], "edited")
+            self.assertFalse(any(block.get('role') == 'graphics-background' for block in result))
+            pictures = [block for block in result if block['type'] == 'image']
+            self.assertTrue(pictures)
+            self.assertTrue(all(block['width'] < 35 and block['height'] < 35 for block in pictures))
+            self.assertFalse(any(block['x'] <= 25 <= block['x'] + block['width'] and
+                                 block['y'] <= 25 <= block['y'] + block['height'] for block in pictures))
 
     def test_vision_response_clipped_and_confidence_unmeasured(self):
         raw = {"blocks": [
@@ -243,14 +249,28 @@ class OcrLayoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=build) as folder, patch.object(ocr, "_api_request", return_value=response):
             source = Path(folder) / "page.png"
             blocks, _ = ocr._recognize_api(image, source, "openai", {"api_key": "secret-example"})
-            self.assertEqual(len(blocks), 2)
+            # A provider rectangle over a blank white area is not a picture.
+            self.assertEqual(len(blocks), 1)
             self.assertEqual(blocks[0]["x"], 0)
             self.assertEqual(blocks[0]["width"], 120)
             self.assertIsNone(blocks[0]["confidence"])
-            self.assertEqual(blocks[1]["width"], 45)
-            self.assertEqual(blocks[1]["height"], 35)
+            self.assertFalse(any(block['type'] == 'image' for block in blocks))
             self.assertNotIn("secret-example", json.dumps(blocks))
-            self.assertTrue((Path(folder) / "page-figure-2.png").exists())
+
+    def test_vision_whole_form_image_is_split_into_editable_rules(self):
+        raw = {'blocks': [{'type': 'text', 'x': 50, 'y': 60, 'width': 140, 'height': 25, 'text': '공문 양식 123'},
+                          {'type': 'image', 'x': 0, 'y': 0, 'width': 300, 'height': 200}]}
+        response = {'choices': [{'message': {'content': json.dumps(raw)}}]}
+        image = np.full((200, 300, 3), 255, np.uint8)
+        cv2.rectangle(image, (20, 30), (280, 180), (0, 0, 0), 2)
+        build = Path(__file__).resolve().parents[1] / 'build'
+        build.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=build) as folder, patch.object(ocr, '_api_request', return_value=response):
+            blocks, _ = ocr._recognize_api(image, Path(folder) / 'page.png', 'openai', {'api_key': 'secret-example'})
+            self.assertTrue(any(block.get('text') == '공문 양식 123' for block in blocks))
+            self.assertGreaterEqual(sum(block['type'] == 'shape' for block in blocks), 4)
+            self.assertFalse(any(block.get('role') == 'graphics-background' for block in blocks))
+            self.assertFalse(any(block['type'] == 'image' and block['width'] > 250 and block['height'] > 140 for block in blocks))
 
     def test_incomplete_vision_json_has_actionable_error(self):
         response = {"choices": [{"message": {"content": '{"blocks": ['}}]}

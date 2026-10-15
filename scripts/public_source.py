@@ -48,6 +48,7 @@ def public_files() -> list[Path]:
         "Skeleton.hwpx", "HWPX_TEMPLATE_LICENSE.txt", "HWPX_TEMPLATE_NOTICE.txt")]
     files += [ROOT / "web" / name for name in ("index.html", "app.js", "styles.css")]
     files += list((ROOT / "tests").glob("test_*.py"))
+    files += list((ROOT / "tests").glob("test_*.cjs"))
     files += [ROOT / "tests" / "fixtures" / "README.md", ROOT / "samples" / "README.md"]
     files += [ROOT / "scripts" / name for name in SCRIPT_FILES]
     files += [ROOT / "docs" / name for name in DOC_FILES]

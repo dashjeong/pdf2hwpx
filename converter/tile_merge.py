@@ -483,6 +483,44 @@ def _clean(block):
         _clean(child)
 
 
+def _merge_form_shapes(shapes):
+    """Join coincident rules observed in overlapping raster tiles only."""
+    retained = []
+    for block in shapes:
+        if block.get('type') != 'shape' or block.get('shape') != 'line':
+            retained.append(block)
+            continue
+        horizontal = block['height'] <= .01 and block['width'] > 0
+        vertical = block['width'] <= .01 and block['height'] > 0
+        if not horizontal and not vertical:
+            retained.append(block)
+            continue
+        axis, extent, cross = ('x', 'width', 'y') if horizontal else ('y', 'height', 'x')
+        matched = False
+        for other in retained:
+            if other.get('type') != 'shape' or other.get('shape') != 'line' or other['_tiles'] & block['_tiles']:
+                continue
+            same_orientation = other['height'] <= .01 if horizontal else other['width'] <= .01
+            if not same_orientation or other.get('stroke_color') != block.get('stroke_color'):
+                continue
+            if abs(other.get('stroke_width', 1) - block.get('stroke_width', 1)) > 1:
+                continue
+            if abs(other[cross] - block[cross]) > 1:
+                continue
+            overlap = min(other[axis] + other[extent], block[axis] + block[extent]) - max(other[axis], block[axis])
+            if overlap <= 0:
+                continue
+            start, stop = min(other[axis], block[axis]), max(other[axis] + other[extent], block[axis] + block[extent])
+            other[axis], other[extent] = start, stop - start
+            other['points'] = [[0, 0], [other['width'], other['height']]]
+            other['_tiles'].update(block['_tiles'])
+            matched = True
+            break
+        if not matched:
+            retained.append(block)
+    return retained
+
+
 def merge_tile_results(page, records, engine, warnings=None):
     warnings = list(warnings or [])
     texts, tables, graphics, others = [], [], [], []
@@ -500,7 +538,7 @@ def merge_tile_results(page, records, engine, warnings=None):
     tables = _merge_tables(tables, warnings)
     texts = _attach_table_text(_merge_lines(texts, warnings), tables, warnings)
     _recheck_seam_cells(tables, records, engine, warnings)
-    blocks = texts + tables + _merge_graphics(graphics, warnings) + others
+    blocks = texts + tables + _merge_graphics(graphics, warnings) + _merge_form_shapes(others)
     for index, block in enumerate(blocks):
         block['id'] = f'tile-merged-{index}'
         _clean(block)

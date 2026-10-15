@@ -314,51 +314,9 @@ def _crop_image_block(image: np.ndarray, box: dict, source: Path, number: int) -
 
 
 def _extract_images(image: np.ndarray, texts: list, tables: list, source: Path, grid: np.ndarray):
-    """Keep substantial residual graphics; leave readable text as editable text."""
-    h, w = image.shape[:2]
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    residual = (gray < 225).astype(np.uint8) * 255
-    residual[cv2.dilate(grid, np.ones((5, 5), np.uint8)) > 0] = 0
-    for block in texts:
-        x, y = max(0, int(block["x"]) - 3), max(0, int(block["y"]) - 3)
-        r, b = min(w, int(block["x"] + block["width"]) + 4), min(h, int(block["y"] + block["height"]) + 4)
-        residual[y:b, x:r] = 0
-    for table in tables:
-        x, y, cw, ch = [int(table[k]) for k in ("x", "y", "width", "height")]
-        residual[y:y + ch + 1, x:x + cw + 1] = 0
-    merged = cv2.dilate(residual, cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15)))
-    contours, _ = cv2.findContours(merged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    boxes = []
-    for contour in contours:
-        x, y, cw, ch = cv2.boundingRect(contour)
-        if cw < 55 or ch < 40 or cw * ch < 3500:
-            continue
-        pixels = np.count_nonzero(residual[y:y + ch, x:x + cw])
-        if pixels < 400 or pixels / (cw * ch) < 0.045:
-            continue
-        # The dilation is only for grouping; crop tight to source ink.
-        sy, sx = np.where(residual[y:y + ch, x:x + cw] > 0)
-        box = _clip_box(x + sx.min() - 2, y + sy.min() - 2,
-                        sx.max() - sx.min() + 5, sy.max() - sy.min() + 5, w, h)
-        if box:
-            boxes.append(box)
-    result = []
-    for number, box in enumerate(sorted(boxes, key=lambda b: (b["y"], b["x"]))[:60], 1):
-        overlapping = [text for text in texts if box["x"] <= text["x"] + text["width"] / 2 <= box["x"] + box["width"] and
-                       box["y"] <= text["y"] + text["height"] / 2 <= box["y"] + box["height"]]
-        if overlapping:
-            mask = np.zeros((h, w), np.uint8)
-            for text in overlapping:
-                tx, ty = max(0, int(text["x"]) - 1), max(0, int(text["y"]) - 1)
-                tr, tb = min(w, int(text["x"] + text["width"]) + 2), min(h, int(text["y"] + text["height"]) + 2)
-                mask[ty:tb, tx:tr] = 255
-            background = cv2.inpaint(image, mask, 3, cv2.INPAINT_TELEA)
-            block = _crop_image_block(background, box, source, number)
-            block["role"] = "graphics-background"
-        else:
-            block = _crop_image_block(image, box, source, number)
-        result.append(block)
-    return result
+    """Return editable form rules and localized genuine pictures, never a background."""
+    from .editable_graphics import extract_editable_graphics
+    return extract_editable_graphics(image, texts, tables, source)
 
 
 def _recognize_local(image: np.ndarray, source: Path, options: dict):
@@ -515,8 +473,22 @@ def _source_box(box: dict, inverse: np.ndarray, width: int, height: int):
 def _remap_source_blocks(blocks, source_image, inverse, source_path):
     height, width = source_image.shape[:2]
     scale = math.sqrt(abs(float(np.linalg.det(inverse[:, :2]))))
+    had_graphics = any(block.get('type') in ('shape', 'image') for block in blocks)
     restored = []
     for index, block in enumerate(blocks):
+        if block.get('type') == 'shape':
+            from .editable_graphics import _shape, _points
+            mapped = cv2.transform(_points(block).astype(np.float32).reshape(-1, 1, 2), inverse).reshape(-1, 2)
+            transformed = _shape(mapped, closed=block.get('closed', block.get('shape') == 'rect'),
+                                 stroke=block.get('stroke_color', '#000000'),
+                                 stroke_width=block.get('stroke_width', 1) * scale,
+                                 fill=block.get('fill_color'), source=block.get('source', 'raster-form'))
+            if transformed:
+                block.update(transformed)
+                restored.append(block)
+            continue
+        if block.get('type') == 'image':
+            continue  # Recreate residual picture crops once from source pixels.
         box, polygon = _source_box(block, inverse, width, height)
         if not box:
             continue
@@ -537,21 +509,15 @@ def _remap_source_blocks(blocks, source_image, inverse, source_path):
                     text.update(text_box, polygon=text_polygon)
                     if "font_size" in text:
                         text["font_size"] = round(text["font_size"] * scale, 2)
-        if block["type"] == "image":
-            background = source_image
-            if block.get("role") == "graphics-background":
-                mask = np.zeros((height, width), np.uint8)
-                for text in blocks:
-                    if text["type"] != "text" or not (box["x"] <= text["x"] + text["width"] / 2 <= box["x"] + box["width"] and
-                                                       box["y"] <= text["y"] + text["height"] / 2 <= box["y"] + box["height"]):
-                        continue
-                    tx, ty = max(0, int(text["x"]) - 1), max(0, int(text["y"]) - 1)
-                    tr, tb = min(width, int(text["x"] + text["width"]) + 2), min(height, int(text["y"] + text["height"]) + 2)
-                    mask[ty:tb, tx:tr] = 255
-                background = cv2.inpaint(source_image, mask, 3, cv2.INPAINT_TELEA)
-            block.update(_crop_image_block(background, box, source_path, index + 1))
         restored.append(block)
-    return restored
+    if not had_graphics:
+        return restored
+    from .editable_graphics import extract_editable_graphics
+    graphics = extract_editable_graphics(source_image,
+        [block for block in restored if block.get('type') == 'text'],
+        [block for block in restored if block.get('type') == 'table'], source_path,
+        native_shapes=[block for block in restored if block.get('type') == 'shape'])
+    return [block for block in restored if block.get('type') != 'shape'] + graphics
 
 
 def _settings(engine: str, options: dict):
@@ -707,6 +673,52 @@ Use [판독불가] for unreadable characters. One text block only. No explanatio
             blocks.append(_crop_image_block(image, box, source, len(blocks) + 1))
     if not blocks:
         raise RuntimeError("모델 응답에 읽을 수 있는 문서 영역이 없습니다.")
+    if not options.get('_single_line_review'):
+        # Providers recognize words; deterministic local geometry keeps form
+        # borders editable even when a vision model labels the form as an image.
+        from .editable_graphics import extract_editable_graphics
+        texts = [block for block in blocks if block['type'] == 'text']
+        tables = [block for block in blocks if block['type'] == 'table']
+        detected, _ = _find_tables(image) if options.get('detect_tables', True) else ([], None)
+        for table in tables:
+            matching = next((candidate for candidate in detected
+                if abs(candidate['x'] - table['x']) < max(8, table['width'] * .08)
+                and abs(candidate['y'] - table['y']) < max(8, table['height'] * .08)
+                and len(candidate['rows']) == len(table['rows'])
+                and len(candidate['rows'][0]) == len(table['rows'][0])), None)
+            if matching:
+                table['cells'] = matching['cells']
+                for cell in table['cells']:
+                    cell['text'] = table['rows'][cell['row']][cell['col']]
+            elif not table.get('cells'):
+                row_count, col_count = len(table['rows']), len(table['rows'][0])
+                cell_width, cell_height = table['width'] / col_count, table['height'] / row_count
+                table['cells'] = [{'row': row, 'col': col, 'x': table['x'] + col * cell_width,
+                    'y': table['y'] + row * cell_height, 'width': cell_width, 'height': cell_height,
+                    'text': table['rows'][row][col]} for row in range(row_count) for col in range(col_count)]
+        if detected and not tables:
+            # Reuse provider text where it covers the grid. If the model returns
+            # only a photograph of a table, locally OCR that actual table rather
+            # than exporting an uneditable table picture.
+            outside = _assign_table_text(texts, detected)
+            if any(cell.get('text') for table in detected for cell in table.get('cells', [])):
+                texts, tables = outside, detected
+            else:
+                local, _ = _recognize_local(image, source, {**options, 'preserve_images': False})
+                tables = [block for block in local if block.get('type') == 'table']
+                texts = [text for text in texts if not any(
+                    table['x'] <= text['x'] + text['width'] / 2 <= table['x'] + table['width']
+                    and table['y'] <= text['y'] + text['height'] / 2 <= table['y'] + table['height']
+                    for table in tables)]
+        graphic_texts = list(texts)
+        if detected and tables and any(not cell.get('text_blocks') for table in tables for cell in table.get('cells', [])):
+            local, _ = _recognize_local(image, source, {**options, 'preserve_images': False})
+            # Cell OCR is only used to remove duplicate raster glyphs; provider
+            # table wording and edits remain the authoritative table contents.
+            graphic_texts.extend(text for table in local if table.get('type') == 'table'
+                                 for cell in table.get('cells', []) for text in cell.get('text_blocks', []))
+        graphics = extract_editable_graphics(image, graphic_texts, tables, source) if options.get('preserve_images', True) else []
+        blocks = texts + tables + graphics
     return blocks, ["시각 AI가 추정한 위치와 글자입니다. 인식 신뢰도는 측정하지 않았으며 원본 대조가 필요합니다."]
 
 

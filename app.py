@@ -104,7 +104,7 @@ def status():
     from converter.local_llm import bundled_status
     local = local_status()
     llm = bundled_status()
-    return {'version': '0.1.0', 'engines': [
+    return {'version': '0.1.1', 'engines': [
         {'id': 'local', 'label': '내 PC · 한국어 OCR', 'available': local.get('ready', False), 'detail': '한국어 PP-OCRv5 / CPU / 인터넷 불필요'},
         {'id': 'sllm', 'label': '내 PC · 소형 AI', 'available': llm['ready'], 'detail': llm['message']},
         {'id': 'openai', 'label': 'OpenAI API', 'available': True, 'detail': 'API 키와 인터넷 필요'},

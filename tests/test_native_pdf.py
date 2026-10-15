@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import tempfile
 import unittest
+from unittest.mock import Mock
 
 import pypdfium2 as pdfium
 from PIL import Image
@@ -14,6 +15,14 @@ PRIVATE_PDF = Path(os.environ.get('PRIVATE_PDF', str(ROOT / 'tests' / 'fixtures'
 
 
 class NativePdfTests(unittest.TestCase):
+    def test_rotated_or_shifted_visible_pdf_uses_rendered_ocr_coordinates(self):
+        for rotation, bounds in ((90, (0, 0, 200, 300)), (0, (30, 40, 180, 280))):
+            with self.subTest(rotation=rotation, bounds=bounds):
+                page = Mock()
+                page.get_rotation.return_value = rotation
+                page.get_bbox.return_value = bounds
+                self.assertIsNone(recognize_native_pdf_page(page, Path('no-render-required.png'), {}))
+                page.get_textpage.assert_not_called()
     @staticmethod
     def glyph(text, x, y, width=20, height=20, baseline=None):
         return {"text": text, "x": x, "y": y, "width": width, "height": height,
@@ -109,7 +118,9 @@ class NativePdfTests(unittest.TestCase):
             self.assertIn("자치구**", cells)
             self.assertEqual(result["engine"], "native")
             self.assertFalse(result["measured"])
-            self.assertTrue((Path(folder) / "source-native-background.png").exists())
+            self.assertFalse((Path(folder) / "source-native-background.png").exists())
+            self.assertTrue(any(block["type"] == "shape" and block.get("source") == "native-pdf-vector" for block in result["blocks"]))
+            self.assertFalse(any(block.get("role") == "graphics-background" for block in result["blocks"]))
             self.assertTrue(any(block["type"] == "text" and block.get("source") == "native-pdf-text" for block in result["blocks"]))
         page.close()
         pdf.close()

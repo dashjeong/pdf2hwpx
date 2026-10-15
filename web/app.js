@@ -10,7 +10,31 @@ const nativeTextMeasure = document.createElement('canvas');
 state.jobId = null;
 state.lazyDocumentId = null;
 state.pageLoading = new Map();
+state.selectedCell = null;
 let toastTimer;
+
+function safeColor(value, fallback = null) {
+  return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value.toUpperCase() : fallback;
+}
+function boundedNumber(value, fallback, minimum, maximum) {
+  const number = Number(value);
+  return Math.max(minimum, Math.min(maximum, value !== null && value !== "" && Number.isFinite(number) ? number : fallback));
+}
+function normalizeBorderStyle(target) {
+  if (target.border_color != null) target.border_color = safeColor(target.border_color, "#52635D");
+  if (target.border_width != null) target.border_width = boundedNumber(target.border_width, 1, 0, 30);
+  if (target.fill_color != null) target.fill_color = safeColor(target.fill_color);
+  if (target.borders && typeof target.borders === "object" && !Array.isArray(target.borders)) {
+    const borders = {};
+    for (const side of ["left", "right", "top", "bottom"]) {
+      const edge = target.borders[side];
+      if (!edge || typeof edge !== "object" || Array.isArray(edge)) continue;
+      borders[side] = { ...edge, color: edge.color === null ? null : safeColor(edge.color, safeColor(target.border_color, "#52635D")),
+        width: boundedNumber(edge.width, target.border_width ?? 1, 0, 30) };
+    }
+    target.borders = borders;
+  }
+}
 
 function mayReplaceDocument() {
   return !state.dirty || window.confirm('저장하지 않은 수정이 있어요. 편집 내용 저장을 먼저 하면 다시 열 수 있어요. 지금 문서를 바꿀까요?');
@@ -198,16 +222,40 @@ function normalizeDocument(data) {
     page.width = Math.max(1, Math.min(1000000, Number(page.width) || 1240));
     page.height = Math.max(1, Math.min(1000000, Number(page.height) || 1754));
     page.image_url = safeAssetUrl(page.image_url);
-    page.blocks = (Array.isArray(page.blocks) ? page.blocks : []).filter((block) => block && ["text", "table", "image"].includes(block.type));
+    page.blocks = (Array.isArray(page.blocks) ? page.blocks : []).filter((block) => block && ["text", "table", "image", "shape"].includes(block.type));
     page.blocks.forEach((block, blockIndex) => {
       block.id = String(block.id || `p${pageIndex}-b${blockIndex}`);
       block.x = Math.max(0, Math.min(page.width - 1, Number(block.x) || 0));
       block.y = Math.max(0, Math.min(page.height - 1, Number(block.y) || 0));
-      block.width = Math.max(1, Math.min(page.width - block.x, Number(block.width) || 100));
-      block.height = Math.max(1, Math.min(page.height - block.y, Number(block.height) || 25));
+      const minimum = block.type === "shape" ? 0 : 1;
+      block.width = boundedNumber(block.width, 100, minimum, page.width - block.x);
+      block.height = boundedNumber(block.height, 25, minimum, page.height - block.y);
       if (block.type === "text") block.text = String(block.text ?? "");
-      if (block.type === "table") block.rows = (Array.isArray(block.rows) ? block.rows : []).map((row) => (Array.isArray(row) ? row : []).map((cell) => String(cell ?? "")));
+      if (block.type === "table") {
+        block.rows = (Array.isArray(block.rows) ? block.rows : []).map((row) => (Array.isArray(row) ? row : []).map((cell) => String(cell ?? "")));
+        normalizeBorderStyle(block);
+        if (Array.isArray(block.cells)) {
+          block.cells = block.cells.filter((cell) => cell && typeof cell === "object");
+          block.cells.forEach(normalizeBorderStyle);
+        }
+      }
       if (block.type === "image") block.image_url = safeAssetUrl(block.image_url);
+      if (block.type === "shape") {
+        block.shape = ["line", "rect", "polyline"].includes(block.shape) ? block.shape : "rect";
+        block.stroke_color = block.stroke_color === null ? null : safeColor(block.stroke_color, "#52635D");
+        block.stroke_width = boundedNumber(block.stroke_width, 1, 0, 30);
+        block.fill_color = safeColor(block.fill_color);
+        block.closed = block.closed === true;
+        if (block.points != null) {
+          if (!Array.isArray(block.points) || block.points.length < 2 || block.points.length > 10000)
+            throw new Error(`${pageIndex + 1}쪽 도형의 좌표는 2~10,000개여야 해요. 좌표를 자르지 않고 문서 열기를 중단했어요.`);
+          block.points = block.points.map((point) => {
+            if (!Array.isArray(point) || point.length !== 2 || point.some((value) => value == null || value === "" || !Number.isFinite(Number(value))))
+              throw new Error(`${pageIndex + 1}쪽 도형의 좌표 형식이 올바르지 않아요. 원본 편집 파일을 확인해주세요.`);
+            return [boundedNumber(point[0], 0, 0, block.width), boundedNumber(point[1], 0, 0, block.height)];
+          });
+        }
+      }
     });
   });
   return normalized;
@@ -232,7 +280,7 @@ function loadDocument(data, restored = false) {
   ui.blockTools.hidden = true;
   ui.convertStep.classList.add("active");
   ui.saveStep.classList.add("active");
-  ui.editorHint.textContent = "ⓘ 글자나 표를 눌러 수정하세요. 선택한 부분의 위치와 크기도 조정할 수 있어요.";
+  ui.editorHint.textContent = "ⓘ 글자·표·선을 눌러 수정하세요. 위치, 크기와 테두리 색도 바꿀 수 있어요.";
   ui.resultTitle.textContent = `${normalized.pages.length}쪽 문서를 ${restored ? "불러왔어요" : "변환했어요"}`;
   const elapsed = Number(normalized.elapsed_seconds);
   ui.resultDescription.textContent = `${Number.isFinite(elapsed) && !restored ? `${elapsed.toFixed(1)}초 소요 · ` : ""}글자와 숫자를 확인하고 HWPX로 저장하세요.`;
@@ -253,6 +301,53 @@ function confidenceValue(block) {
   if (!Number.isFinite(confidence)) return null;
   return Math.max(0, Math.min(1, confidence > 1 ? confidence / 100 : confidence));
 }
+function drawShape(element, block) {
+  const namespace = "http://www.w3.org/2000/svg";
+  const padding = Math.max(4, block.stroke_width / 2 + 1);
+  const svg = document.createElementNS(namespace, "svg");
+  svg.setAttribute("viewBox", `${-padding} ${-padding} ${block.width + 2 * padding} ${block.height + 2 * padding}`);
+  svg.setAttribute("aria-hidden", "true");
+  const vector = document.createElementNS(namespace, block.shape === "polyline" && block.closed ? "polygon" : block.shape);
+  if (block.shape === "rect") {
+    for (const [key, value] of Object.entries({ x: 0, y: 0, width: block.width, height: block.height })) vector.setAttribute(key, String(value));
+  } else {
+    const points = block.points?.length >= 2 ? block.points : [[0, 0], [block.width, block.height]];
+    if (block.shape === "line") {
+      for (const [key, value] of Object.entries({ x1: points[0][0], y1: points[0][1], x2: points.at(-1)[0], y2: points.at(-1)[1] })) vector.setAttribute(key, String(value));
+    } else vector.setAttribute("points", points.map((point) => point.join(",")).join(" "));
+  }
+  vector.setAttribute("stroke", block.stroke_color === null ? "none" : safeColor(block.stroke_color, "#52635D"));
+  vector.setAttribute("stroke-width", String(block.stroke_width));
+  vector.setAttribute("fill", block.shape === "line" ? "none" : safeColor(block.fill_color, "none"));
+  vector.setAttribute("stroke-linecap", "round");
+  vector.classList.add("shape-vector");
+  // This transparent stroke enlarges only the selection target; saved geometry
+  // and the visible stroke keep their original width, including a zero axis.
+  const hit = vector.cloneNode(false);
+  hit.setAttribute("stroke", "transparent");
+  hit.setAttribute("stroke-width", String(Math.max(8, 5 / Math.max(.00001, state.scale), block.stroke_width)));
+  hit.setAttribute("fill", "none");
+  hit.classList.add("shape-hit");
+  svg.append(vector, hit);
+  element.replaceChildren(svg);
+  element.style.left = `${block.x - padding}px`;
+  element.style.top = `${block.y - padding}px`;
+  element.style.width = `${block.width + 2 * padding}px`;
+  element.style.height = `${block.height + 2 * padding}px`;
+}
+function setCellStyle(td, block, cell = null) {
+  const color = safeColor(cell?.border_color, safeColor(block.border_color, "#52635D"));
+  const borderColor = cell && Object.hasOwn(cell, "border_color") ? cell.border_color : block.border_color;
+  const width = borderColor === null ? 0 : boundedNumber(cell?.border_width ?? block.border_width, 1, 0, 30);
+  td.style.border = `${width}px solid ${color}`;
+  for (const side of ["left", "right", "top", "bottom"]) {
+    const edge = cell?.borders?.[side];
+    const edgeColor = safeColor(edge?.color, color);
+    const edgeWidth = edge?.color === null ? 0 : boundedNumber(edge?.width, width, 0, 30);
+    td.style[`border${side[0].toUpperCase()}${side.slice(1)}`] = `${edgeWidth}px solid ${edgeColor}`;
+  }
+  td.style.backgroundColor = cell && Object.hasOwn(cell, "fill_color") ? safeColor(cell.fill_color, "transparent") : safeColor(block.fill_color, "transparent");
+}
 function blockElement(block) {
   let element;
   if (block.type === "image") {
@@ -261,8 +356,14 @@ function blockElement(block) {
     element.alt = "문서 속 그림";
     element.draggable = false;
     element.className = "edit-block image-block";
-    if (block.role === "graphics-background") { element.classList.add("graphics-background"); element.alt = "원본 표 테두리와 그림 배경"; element.setAttribute("aria-hidden", "true"); }
-    else element.tabIndex = 0;
+    if (block.role === "graphics-background") { element.classList.add("legacy-background"); element.alt = "기존 문서의 배경 그림 · 위치와 크기 편집"; }
+    element.tabIndex = 0;
+  } else if (block.type === "shape") {
+    element = document.createElement("div");
+    element.className = "edit-block shape-block";
+    element.tabIndex = 0;
+    element.setAttribute("role", "button");
+    element.setAttribute("aria-label", `${block.shape === "line" ? "선" : block.shape === "rect" ? "사각형" : "꺾은 선"} 편집 · 위치와 색상 조정`);
   } else if (block.type === "table") {
     element = document.createElement("table");
     element.className = "edit-block table-block";
@@ -301,6 +402,7 @@ function blockElement(block) {
         td.dataset.col = String(colIndex);
         td.setAttribute("aria-label", `표 ${rowIndex + 1}행 ${colIndex + 1}열 편집`);
         const cell = cellMap.get(`${rowIndex}:${colIndex}`);
+        setCellStyle(td, block, cell);
         if (cell?.rowspan > 1) td.rowSpan = cell.rowspan;
         if (cell?.colspan > 1) td.colSpan = cell.colspan;
         const confidence = cell ? confidenceValue(cell) : null;
@@ -329,7 +431,7 @@ function blockElement(block) {
   // PDF text bounds use the original font. A substituted browser font can
   // wrap the last character onto the following table and hide it there.
   // Keep original single-line runs on one line and fit their display width.
-  if (block.type === 'text' && block.source === 'native-pdf-text' && !block.text.includes('\n')) {
+  if (block.type === 'text' && block.source === 'native-pdf-text' && !block.text_edited && !block.text.includes('\n')) {
     element.style.whiteSpace = 'pre';
     element.style.wordBreak = 'normal';
     const context = nativeTextMeasure.getContext('2d');
@@ -340,7 +442,7 @@ function blockElement(block) {
   }
   const confidence = confidenceValue(block);
   if (confidence != null) element.title = `인식 신뢰도 ${(confidence * 100).toFixed(1)}% · 눌러서 확인 및 수정`;
-  element.classList.toggle("low-confidence", ui.confidenceToggle.checked && confidence != null && confidence < .9 && block.type !== "image");
+  element.classList.toggle("low-confidence", ui.confidenceToggle.checked && confidence != null && confidence < .9 && ["text", "table"].includes(block.type));
   return element;
 }
 function setBlockStyle(element, block) {
@@ -353,6 +455,8 @@ function setBlockStyle(element, block) {
   if (typeof block.color === "string" && /^#[0-9a-f]{6}$/i.test(block.color)) element.style.color = block.color;
   if (block.font_weight || block.bold) element.style.fontWeight = block.font_weight === "bold" || block.bold ? "700" : String(Number(block.font_weight) || 400);
   if (["left", "center", "right", "justify"].includes(block.text_align)) element.style.textAlign = block.text_align;
+  if (block.type === "text" && block.text_edited) { element.style.whiteSpace = "pre-wrap"; element.style.wordBreak = "break-word"; }
+  if (block.type === "shape") drawShape(element, block);
 }
 async function renderPage() {
   const position = state.page;
@@ -395,21 +499,84 @@ function resizePages() {
   state.scale = Math.max(.00001, available / page.width) * state.zoom;
   for (const stage of [ui.sourceStage, ui.editorStage]) { stage.style.width = `${page.width * state.scale}px`; stage.style.height = `${page.height * state.scale}px`; }
   ui.editablePage.style.transform = `scale(${state.scale})`;
+  for (const node of ui.editablePage.querySelectorAll(".shape-block")) {
+    const block = page.blocks.find((item) => item.id === node.dataset.blockId);
+    const hit = node.querySelector(".shape-hit");
+    if (hit && block) hit.setAttribute("stroke-width", String(Math.max(8, 5 / state.scale, block.stroke_width)));
+  }
   ui.zoomValue.textContent = state.zoom === 1 ? "맞춤" : `${Math.round(state.zoom * 100)}%`;
   updateSourceHighlight();
 }
 function selectedBlock() { return state.document?.pages[state.page]?.blocks.find((block) => block.id === state.selected); }
-function selectBlock(blockId) {
+function selectBlock(blockId, selectedCell = null) {
   state.selected = blockId;
   for (const node of ui.editablePage.children) node.classList.toggle("selected", node.dataset.blockId === blockId);
   const block = selectedBlock();
+  state.selectedCell = block?.type === "table" ? selectedCell : null;
   ui.blockTools.hidden = !block;
   showModelReview(block);
   if (!block) { ui.sourceHighlight.hidden = true; return; }
-  ui.selectedBlockLabel.textContent = block.type === "table" ? "선택한 표" : block.type === "image" ? "선택한 그림" : "선택한 글자";
+  ui.selectedBlockLabel.textContent = block.type === "table" ? "선택한 표" : block.type === "image" ? "선택한 그림" : block.type === "shape" ? "선택한 도형" : "선택한 글자";
   for (const [id, field] of [["blockX", "x"], ["blockY", "y"], ["blockWidth", "width"], ["blockHeight", "height"], ["blockFontSize", "font_size"]]) ui[id].value = Math.round(Number(block[field]) || (field === "font_size" ? 20 : 0));
   ui.fontSizeField.hidden = block.type !== "text";
+  ui.blockWidth.min = ui.blockHeight.min = block.type === "shape" ? "0" : "1";
+  ui.appearanceTools.hidden = !["shape", "table"].includes(block.type);
+  ui.tableStyleScopeField.hidden = block.type !== "table";
+  ui.tableStyleScope.value = state.selectedCell ? "cell" : "all";
+  ui.tableStyleScope.querySelector('[value="cell"]').disabled = !state.selectedCell;
+  updateAppearanceControls();
   updateSourceHighlight();
+}
+function selectedCellStyle(block, create = false) {
+  if (!state.selectedCell) return null;
+  const { row, col } = state.selectedCell;
+  const cells = Array.isArray(block.cells) ? block.cells : [];
+  let cell = cells.find((item) => Number(item.row ?? item.row_index) === row && Number(item.col ?? item.column ?? item.col_index) === col);
+  if (!cell && create) {
+    cell = { row, col, rowspan: 1, colspan: 1 };
+    if (!Array.isArray(block.cells)) block.cells = [];
+    block.cells.push(cell);
+  }
+  return cell;
+}
+function updateAppearanceControls() {
+  const block = selectedBlock();
+  if (!block || !["shape", "table"].includes(block.type)) return;
+  const cell = block.type === "table" && ui.tableStyleScope.value === "cell" ? selectedCellStyle(block) : null;
+  const shape = block.type === "shape";
+  ui.blockStrokeColor.value = safeColor(shape ? block.stroke_color : cell?.border_color, safeColor(block.border_color, "#52635D"));
+  ui.strokeVisibilityField.hidden = false;
+  const edgeValues = !shape && cell?.borders ? Object.values(cell.borders) : [];
+  ui.blockStrokeEnabled.checked = shape ? block.stroke_color !== null && block.stroke_width > 0 : edgeValues.length ? edgeValues.some((edge) => edge.color !== null && edge.width > 0) :
+    (cell && Object.hasOwn(cell, "border_color") ? cell.border_color : block.border_color) !== null && Number(cell?.border_width ?? block.border_width ?? 1) > 0;
+  ui.blockStrokeColor.disabled = !ui.blockStrokeEnabled.checked;
+  ui.blockStrokeWidth.value = shape ? block.stroke_width : cell?.border_width ?? block.border_width ?? 1;
+  const fill = cell && Object.hasOwn(cell, "fill_color") ? safeColor(cell.fill_color) : safeColor(block.fill_color);
+  ui.blockFillEnabled.checked = Boolean(fill);
+  ui.blockFillColor.value = fill || "#FFFFFF";
+  ui.blockFillColor.disabled = !fill;
+  ui.fillStyleField.hidden = shape && block.shape === "line";
+  for (const td of ui.editablePage.querySelectorAll("td")) td.classList.toggle("selected-cell", Boolean(state.selectedCell &&
+    td.closest("[data-block-id]")?.dataset.blockId === block.id && Number(td.dataset.row) === state.selectedCell.row && Number(td.dataset.col) === state.selectedCell.col));
+}
+function applyAppearance(field, value) {
+  const block = selectedBlock();
+  if (!block || !["shape", "table"].includes(block.type)) return;
+  const cellOnly = block.type === "table" && ui.tableStyleScope.value === "cell" && state.selectedCell;
+  const targets = cellOnly ? [selectedCellStyle(block, true)] : [block, ...(block.type === "table" && Array.isArray(block.cells) ? block.cells : [])];
+  const key = block.type === "table" ? { stroke_color: "border_color", stroke_width: "border_width", fill_color: "fill_color" }[field] : field;
+  targets.forEach((target) => {
+    target[key] = value;
+    if (block.type === "table" && field !== "fill_color") delete target.borders;
+  });
+  const node = [...ui.editablePage.children].find((item) => item.dataset.blockId === block.id);
+  if (block.type === "shape" && node) setBlockStyle(node, block);
+  if (block.type === "table" && node) for (const td of node.querySelectorAll("td")) {
+    const cell = block.cells?.find((item) => Number(item.row ?? item.row_index) === Number(td.dataset.row) && Number(item.col ?? item.column ?? item.col_index) === Number(td.dataset.col));
+    setCellStyle(td, block, cell);
+  }
+  updateAppearanceControls();
+  markEdited(block);
 }
 function showModelReview(block) {
   const review = block?.model_review && typeof block.model_review === "object" ? block.model_review : null;
@@ -429,7 +596,7 @@ function updateSourceHighlight() {
   const block = selectedBlock();
   ui.sourceHighlight.hidden = !block;
   if (!block) return;
-  for (const field of ["x", "y", "width", "height"]) ui.sourceHighlight.style[{ x: "left", y: "top", width: "width", height: "height" }[field]] = `${block[field] * state.scale}px`;
+  for (const field of ["x", "y", "width", "height"]) ui.sourceHighlight.style[{ x: "left", y: "top", width: "width", height: "height" }[field]] = `${["width", "height"].includes(field) ? Math.max(5, block[field] * state.scale) : block[field] * state.scale}px`;
 }
 function markEdited(block) {
   state.edited.add(`${state.page}:${block.id}`);
@@ -440,7 +607,7 @@ function markEdited(block) {
 }
 function updateMetrics() {
   const blocks = state.document?.pages.flatMap((page) => page.blocks) || [];
-  const confidences = blocks.filter((block) => block.type !== "image").map(confidenceValue).filter((value) => value != null);
+  const confidences = blocks.filter((block) => ["text", "table"].includes(block.type)).map(confidenceValue).filter((value) => value != null);
   ui.confidenceMetric.textContent = confidences.length ? `${(confidences.reduce((sum, value) => sum + value, 0) / confidences.length * 100).toFixed(1)}%` : "—";
   ui.reviewMetric.textContent = confidences.length ? `${confidences.filter((value) => value < .9).length}곳` : "—";
   ui.editedMetric.textContent = state.document ? `${state.edited.size}곳` : "—";
@@ -791,17 +958,29 @@ ui.confidenceToggle.addEventListener("change", () => {
   for (const node of ui.editablePage.children) {
     const block = page.blocks.find((item) => item.id === node.dataset.blockId);
     const confidence = block ? confidenceValue(block) : null;
-    node.classList.toggle("low-confidence", ui.confidenceToggle.checked && confidence != null && confidence < .9 && block.type !== "image");
+    node.classList.toggle("low-confidence", ui.confidenceToggle.checked && confidence != null && confidence < .9 && ["text", "table"].includes(block.type));
     for (const cell of node.querySelectorAll("td[data-confidence]")) cell.classList.toggle("low-confidence", ui.confidenceToggle.checked && Number(cell.dataset.confidence) < .9);
   }
 });
-ui.editablePage.addEventListener("click", (event) => { const node = event.target.closest("[data-block-id]"); selectBlock(node?.dataset.blockId || null); });
-ui.editablePage.addEventListener("focusin", (event) => { const node = event.target.closest("[data-block-id]"); if (node) selectBlock(node.dataset.blockId); });
+function selectFromEvent(event) {
+  const node = event.target.closest("[data-block-id]");
+  const cell = event.target.closest("td");
+  selectBlock(node?.dataset.blockId || null, cell ? { row: Number(cell.dataset.row), col: Number(cell.dataset.col) } : null);
+}
+ui.editablePage.addEventListener("click", selectFromEvent);
+ui.editablePage.addEventListener("focusin", (event) => { if (event.target.closest("[data-block-id]")) selectFromEvent(event); });
+ui.editablePage.addEventListener("keydown", (event) => {
+  if (["Enter", " "].includes(event.key) && event.target.matches(".shape-block,.image-block")) { event.preventDefault(); selectFromEvent(event); }
+});
 ui.editablePage.addEventListener("input", (event) => {
   const node = event.target.closest("[data-block-id]");
   const block = state.document?.pages[state.page]?.blocks.find((item) => item.id === node?.dataset.blockId);
   if (!block) return;
-  if (block.type === "text") block.text = node.innerText.replace(/\r\n/g, "\n");
+  if (block.type === "text") {
+    block.text = node.innerText.replace(/\r\n/g, "\n");
+    block.text_edited = true;
+    setBlockStyle(node, block);
+  }
   else if (block.type === "table") {
     const td = event.target.closest("td");
     if (td) block.rows[Number(td.dataset.row)][Number(td.dataset.col)] = td.innerText.replace(/\r\n/g, "\n");
@@ -832,17 +1011,35 @@ for (const [id, field] of [["blockX", "x"], ["blockY", "y"], ["blockWidth", "wid
   if (!block || !page) return;
   const value = Number(ui[id].value);
   if (!Number.isFinite(value)) return;
+  const previousSize = field === "width" || field === "height" ? block[field] : null;
   if (field === "x") block.x = Math.max(0, Math.min(page.width - block.width, value));
   if (field === "y") block.y = Math.max(0, Math.min(page.height - block.height, value));
-  if (field === "width") block.width = Math.max(1, Math.min(page.width - block.x, value));
-  if (field === "height") block.height = Math.max(1, Math.min(page.height - block.y, value));
+  if (field === "width") block.width = Math.max(block.type === "shape" ? 0 : 1, Math.min(page.width - block.x, value));
+  if (field === "height") block.height = Math.max(block.type === "shape" ? 0 : 1, Math.min(page.height - block.y, value));
   if (field === "font_size") block.font_size = Math.max(5, Math.min(160, value));
+  if (block.type === "shape" && previousSize !== null && Array.isArray(block.points)) {
+    const axis = field === "width" ? 0 : 1;
+    block.points = block.points.map((point, index) => point.map((coordinate, current) => current !== axis ? coordinate : previousSize > 0 ? coordinate * block[field] / previousSize : index === 0 ? 0 : block[field]));
+  }
   const node = [...ui.editablePage.children].find((item) => item.dataset.blockId === block.id);
   if (node) setBlockStyle(node, block);
   ui[id].value = Math.round(block[field]);
   updateSourceHighlight();
   markEdited(block);
 });
+ui.tableStyleScope.addEventListener("change", updateAppearanceControls);
+ui.blockStrokeEnabled.addEventListener("change", () => {
+  const block = selectedBlock();
+  if (!block) return;
+  if (ui.blockStrokeEnabled.checked) {
+    if (Number(ui.blockStrokeWidth.value) <= 0) applyAppearance("stroke_width", 1);
+    applyAppearance("stroke_color", safeColor(ui.blockStrokeColor.value, "#52635D"));
+  } else applyAppearance(block.type === "table" ? "stroke_width" : "stroke_color", block.type === "table" ? 0 : null);
+});
+ui.blockStrokeColor.addEventListener("input", () => applyAppearance("stroke_color", safeColor(ui.blockStrokeColor.value, "#52635D")));
+ui.blockStrokeWidth.addEventListener("change", () => applyAppearance("stroke_width", boundedNumber(ui.blockStrokeWidth.value, 1, 0, 30)));
+ui.blockFillEnabled.addEventListener("change", () => applyAppearance("fill_color", ui.blockFillEnabled.checked ? safeColor(ui.blockFillColor.value, "#FFFFFF") : null));
+ui.blockFillColor.addEventListener("input", () => applyAppearance("fill_color", safeColor(ui.blockFillColor.value)));
 ui.restoreBlock.addEventListener("click", () => {
   const block = selectedBlock();
   const original = state.baseline?.pages[state.page]?.blocks.find((item) => item.id === state.selected);

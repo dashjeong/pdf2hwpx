@@ -6,7 +6,7 @@ import json
 import os
 import time
 
-PIPELINE_VERSION = 2
+PIPELINE_VERSION = 3
 MAX_PAGE_JSON = 8 * 1024 * 1024
 
 
