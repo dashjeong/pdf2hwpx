@@ -318,6 +318,10 @@ function drawShape(element, block) {
   }
   vector.setAttribute("stroke", block.stroke_color === null ? "none" : safeColor(block.stroke_color, "#52635D"));
   vector.setAttribute("stroke-width", String(block.stroke_width));
+  if (["DOT", "DASH"].includes(block.stroke_style)) {
+    const width = Math.max(.1, block.stroke_width);
+    vector.setAttribute("stroke-dasharray", `${width * (block.stroke_style === "DOT" ? 1 : 4)} ${width * 2}`);
+  }
   vector.setAttribute("fill", block.shape === "line" ? "none" : safeColor(block.fill_color, "none"));
   vector.setAttribute("stroke-linecap", "round");
   vector.classList.add("shape-vector");
@@ -339,12 +343,14 @@ function setCellStyle(td, block, cell = null) {
   const color = safeColor(cell?.border_color, safeColor(block.border_color, "#52635D"));
   const borderColor = cell && Object.hasOwn(cell, "border_color") ? cell.border_color : block.border_color;
   const width = borderColor === null ? 0 : boundedNumber(cell?.border_width ?? block.border_width, 1, 0, 30);
-  td.style.border = `${width}px solid ${color}`;
+  const lineStyle = value => ({ DOT: "dotted", DASH: "dashed" }[value] || "solid");
+  const borderStyle = cell?.border_style ?? block.border_style;
+  td.style.border = `${width}px ${lineStyle(borderStyle)} ${color}`;
   for (const side of ["left", "right", "top", "bottom"]) {
-    const edge = cell?.borders?.[side];
+    const edge = cell?.borders?.[side] ?? block.borders?.[side];
     const edgeColor = safeColor(edge?.color, color);
     const edgeWidth = edge?.color === null ? 0 : boundedNumber(edge?.width, width, 0, 30);
-    td.style[`border${side[0].toUpperCase()}${side.slice(1)}`] = `${edgeWidth}px solid ${edgeColor}`;
+    td.style[`border${side[0].toUpperCase()}${side.slice(1)}`] = `${edgeWidth}px ${lineStyle(edge?.style ?? borderStyle)} ${edgeColor}`;
   }
   td.style.backgroundColor = cell && Object.hasOwn(cell, "fill_color") ? safeColor(cell.fill_color, "transparent") : safeColor(block.fill_color, "transparent");
 }

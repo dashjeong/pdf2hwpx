@@ -256,6 +256,74 @@ def _find_tables(image: np.ndarray):
     return tables, accepted_grid
 
 
+def _find_text_frames(image, texts, existing_tables):
+    """Recover closed, text-filled single cells without boxing ordinary lines.
+
+    All four measured borders are required. Unclosed rules, empty/photo frames
+    and already detected multi-cell tables are excluded. Dotted borders are
+    joined only for geometry detection; their native border style is retained.
+    """
+    if not texts:
+        return []
+    height, width = image.shape[:2]
+    ink = (cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) < 225).astype(np.uint8) * 255
+    for block in texts + existing_tables:
+        x, y = max(0, int(block['x']) - 2), max(0, int(block['y']) - 2)
+        r = min(width, int(math.ceil(block['x'] + block['width'])) + 2)
+        b = min(height, int(math.ceil(block['y'] + block['height'])) + 2)
+        ink[y:b, x:r] = 0
+    axes = []
+    for horizontal in (True, False):
+        bridge = np.ones((1, 9) if horizontal else (9, 1), np.uint8)
+        minimum = max(30, (width // 35 if horizontal else height // 45))
+        kernel = np.ones((1, minimum) if horizontal else (minimum, 1), np.uint8)
+        axes.append(cv2.morphologyEx(cv2.morphologyEx(ink, cv2.MORPH_CLOSE, bridge), cv2.MORPH_OPEN, kernel))
+    horizontal, vertical = axes
+    joined = cv2.dilate(horizontal | vertical, np.ones((3, 3), np.uint8))
+    contours, _ = cv2.findContours(joined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    frames = []
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        if w < 100 or h < 45:
+            continue
+        xs = _cluster(np.flatnonzero(np.count_nonzero(vertical[y:y+h, x:x+w], axis=0) >= h * .85))
+        ys = _cluster(np.flatnonzero(np.count_nonzero(horizontal[y:y+h, x:x+w], axis=1) >= w * .85))
+        if len(xs) != 2 or len(ys) != 2:
+            continue
+        left, right = x + xs[0], x + xs[1]
+        top, bottom = y + ys[0], y + ys[1]
+        if right - left < 90 or bottom - top < 40:
+            continue
+        inside = [t for t in texts if left + 2 <= t['x'] and top + 2 <= t['y']
+                  and t['x'] + t['width'] <= right - 2 and t['y'] + t['height'] <= bottom - 2]
+        if not inside or sum(len(t.get('text', '').strip()) for t in inside) < 3:
+            continue
+        interior = ink[top+5:bottom-4, left+5:right-4]
+        if not interior.size or np.count_nonzero(interior) / interior.size > .02:
+            continue  # A picture/diagram interior must remain a picture.
+        if any(left < t['x'] + t['width'] and right > t['x'] and
+               top < t['y'] + t['height'] and bottom > t['y'] for t in existing_tables + frames):
+            continue
+        borders = {}
+        for side, strip, horizontal_edge in (
+            ('top', ink[max(0, top-2):top+3, left+4:right-3], True),
+            ('bottom', ink[bottom-2:min(height, bottom+3), left+4:right-3], True),
+            ('left', ink[top+4:bottom-3, max(0, left-2):left+3], False),
+            ('right', ink[top+4:bottom-3, right-2:min(width, right+3)], False)):
+            support = np.any(strip > 0, axis=0 if horizontal_edge else 1)
+            differences = np.diff(np.r_[0, support.astype(np.int8), 0])
+            runs = np.flatnonzero(differences == -1) - np.flatnonzero(differences == 1)
+            thickness = max(1, int(np.max(np.count_nonzero(strip, axis=0 if horizontal_edge else 1), initial=1)))
+            style = 'SOLID' if np.mean(support) > .85 else 'DOT' if len(runs) and np.median(runs) <= thickness * 2 else 'DASH'
+            borders[side] = {'style': style, 'width': thickness}
+        cell = dict(row=0, col=0, rowspan=1, colspan=1, x=left, y=top,
+                    width=right-left, height=bottom-top, text='', _texts=[], _scores=[], borders=borders)
+        frames.append(dict(type='table', x=left, y=top, width=right-left, height=bottom-top,
+                           rows=[['']], cells=[cell], source='closed-text-frame', borders=borders,
+                           column_widths=[right-left], row_heights=[bottom-top], confidence=None))
+    return frames
+
+
 def _assign_table_text(text_blocks: list, tables: list):
     outside = []
     for block in text_blocks:
@@ -385,6 +453,8 @@ def _recognize_local(image: np.ndarray, source: Path, options: dict):
                 text = _restore_source_spaces(cleaned, polygon, text, entry[3])
             texts.append({"type": "text", **box, "text": text, "font_size": round(box["height"] * 0.78, 2),
                           "confidence": round(float(confidence), 4), "polygon": polygon})
+    if options.get('detect_tables', True):
+        tables.extend(_find_text_frames(image, texts, tables))
     outside = _assign_table_text(texts, tables)
     figures = _extract_images(image, texts, tables, source, grid) if options.get("preserve_images", True) else []
     warnings = []
@@ -496,6 +566,15 @@ def _remap_source_blocks(blocks, source_image, inverse, source_path):
         block["polygon"] = polygon
         if "font_size" in block:
             block["font_size"] = round(block["font_size"] * scale, 2)
+        # Border widths are measured in the enlarged OCR image too. Copy edge
+        # maps: a single-cell table can share the same map with its cell.
+        for style in [block, *block.get('cells', [])]:
+            if isinstance(style.get('border_width'), (int, float)):
+                style['border_width'] *= scale
+            if isinstance(style.get('borders'), dict):
+                style['borders'] = {side: {**edge, **({'width': edge['width'] * scale}
+                    if isinstance(edge.get('width'), (int, float)) else {})}
+                    for side, edge in style['borders'].items() if isinstance(edge, dict)}
         for dimension in ("column_widths", "row_heights"):
             if dimension in block:
                 block[dimension] = [round(value * scale, 2) for value in block[dimension]]
@@ -710,6 +789,10 @@ Use [판독불가] for unreadable characters. One text block only. No explanatio
                     table['x'] <= text['x'] + text['width'] / 2 <= table['x'] + table['width']
                     and table['y'] <= text['y'] + text['height'] / 2 <= table['y'] + table['height']
                     for table in tables)]
+        frames = _find_text_frames(image, texts, tables) if options.get('detect_tables', True) else []
+        if frames:
+            texts = _assign_table_text(texts, frames)
+            tables.extend(frames)
         graphic_texts = list(texts)
         if detected and tables and any(not cell.get('text_blocks') for table in tables for cell in table.get('cells', [])):
             local, _ = _recognize_local(image, source, {**options, 'preserve_images': False})

@@ -407,6 +407,34 @@ def raster_form_shapes(image, texts, tables):
                 continue
             points = [[x, y + (h - 1) / 2], [x + w - 1, y + (h - 1) / 2]] if horizontal else [[x + (w - 1) / 2, y], [x + (w - 1) / 2, y + h - 1]]
             result.append(_shape(points, stroke=_dominant_color(image[y:y + h, x:x + w][opened[y:y + h, x:x + w] > 0], '#000000'), stroke_width=thickness))
+        # Dotted form borders survive solid-line morphology as one large,
+        # mostly empty raster frame. That picture can cover every OCR line.
+        # Bridge short gaps only in the candidate mask, then require repeated
+        # short ink runs; retain the original dots as an editable line style.
+        bridge = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 1) if horizontal else (1, 5))
+        joined = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, bridge)
+        dotted = cv2.morphologyEx(joined, cv2.MORPH_OPEN, kernel)
+        contours, _ = cv2.findContours(dotted, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            length, thickness = (w, h) if horizontal else (h, w)
+            if length < max(40, minimum) or thickness > 3:
+                continue
+            marked = ink[y:y + h, x:x + w] > 0
+            support = np.any(marked, axis=0 if horizontal else 1)
+            if not .15 <= float(np.mean(support)) <= .8:
+                continue
+            changes = np.diff(np.r_[0, support.astype(np.int8), 0])
+            runs = np.flatnonzero(changes == -1) - np.flatnonzero(changes == 1)
+            if len(runs) < 8 or np.percentile(runs, 90) > 6:
+                continue
+            points = [[x, y + (h - 1) / 2], [x + w - 1, y + (h - 1) / 2]] if horizontal else [[x + (w - 1) / 2, y], [x + (w - 1) / 2, y + h - 1]]
+            rule = _shape(points, stroke=_dominant_color(image[y:y + h, x:x + w][marked], '#000000'),
+                          stroke_width=thickness, source='raster-dotted-form')
+            # OCR enlarges small scans before extraction. A dot can therefore
+            # span 3 pixels; classify its aspect ratio, not just pixel length.
+            rule['stroke_style'] = 'DOT' if np.median(runs) <= max(2, thickness * 2) else 'DASH'
+            result.append(rule)
     # Diagonal form rules (crosses, slashes and diagram connectors) must be
     # vectors too; orthogonal morphology cannot detect them.
     candidates = cv2.HoughLinesP(ink, 1, np.pi / 720, threshold=max(25, int(min(width, height) * .08)),

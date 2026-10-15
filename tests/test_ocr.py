@@ -12,6 +12,71 @@ from converter import ocr
 
 
 class OcrLayoutTests(unittest.TestCase):
+    def test_enlarged_table_border_widths_map_back_once_even_when_shared(self):
+        shared = {'top': {'style': 'DOT', 'width': 3}, 'left': {'style': 'DASH', 'width': 6}}
+        table = dict(type='table', x=20, y=20, width=200, height=100, rows=[['123']],
+                     border_width=3, borders=shared, cells=[dict(row=0, col=0, x=20, y=20,
+                     width=200, height=100, text='123', borders=shared, border_width=3)])
+        restored = ocr._remap_source_blocks([table], np.full((100, 200, 3), 255, np.uint8),
+                                            np.array([[.5, 0, 0], [0, .5, 0]]), Path('unused.png'))[0]
+        for style in (restored, restored['cells'][0]):
+            self.assertEqual(style['border_width'], 1.5)
+            self.assertEqual(style['borders']['top'], {'style': 'DOT', 'width': 1.5})
+            self.assertEqual(style['borders']['left'], {'style': 'DASH', 'width': 3})
+        self.assertEqual(shared['top']['width'], 3)
+
+    def test_closed_text_frame_becomes_one_real_table_without_boxing_outside_text(self):
+        from io import BytesIO
+        from zipfile import ZipFile
+        import xml.etree.ElementTree as ET
+        from converter.hwpx import NS, export_hwpx, export_html
+        image = np.full((350, 800, 3), 255, np.uint8)
+        for x in range(30, 771, 3):
+            image[30, x] = image[260, x] = 0
+        for y in range(30, 261, 3):
+            image[y, 30] = image[y, 770] = 0
+        entries = [[[[65, 85], [430, 85], [430, 112], [65, 112]], '표 안의 글자 34567', .99],
+                   [[[65, 165], [430, 165], [430, 193], [65, 193]], '두 번째 문장', .99],
+                   [[[40, 300], [430, 300], [430, 325], [40, 325]], '표 밖의 일반 본문', .99]]
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'scan.png'
+            with patch.object(ocr, '_local_engine') as factory:
+                factory.return_value.return_value = (entries, None)
+                blocks, _ = ocr._recognize_local(image, source, {})
+            tables = [b for b in blocks if b['type'] == 'table']
+            self.assertEqual(len(tables), 1)
+            self.assertEqual(tables[0]['rows'], [['표 안의 글자 34567\n두 번째 문장']])
+            self.assertEqual([b['text'] for b in blocks if b['type'] == 'text'], ['표 밖의 일반 본문'])
+            self.assertFalse([b for b in blocks if b['type'] in {'image', 'shape'}])
+            doc = {'id': 'frame-test', 'pages': [{'width': 800, 'height': 350, 'dpi': 150, 'blocks': blocks}]}
+            with ZipFile(BytesIO(export_hwpx(doc, Path(directory)))) as package:
+                section = ET.fromstring(package.read('Contents/section0.xml'))
+                header = ET.fromstring(package.read('Contents/header.xml'))
+                self.assertEqual(len(section.findall('.//hp:tbl', NS)), 1)
+                cell = section.find('.//hp:tc', NS)
+                self.assertEqual(cell.get('editable'), '1')
+                self.assertIn('34567', ''.join(cell.itertext()))
+                self.assertFalse(section.findall('.//hp:pic', NS))
+                self.assertFalse(section.findall('.//hp:drawText', NS))
+                border = next(b for b in header.findall('.//hh:borderFill', NS) if b.get('id') == cell.get('borderFillIDRef'))
+                self.assertEqual(border.find('hh:topBorder', NS).get('type'), 'DOT')
+            self.assertIn(b'px dotted ', export_html(doc, Path(directory)))
+
+    def test_single_cell_requires_closed_borders_and_text_and_excludes_photo(self):
+        image = np.full((300, 600, 3), 255, np.uint8)
+        text = dict(type='text', text='본문 123', x=60, y=70, width=200, height=25)
+        for y in (30, 250):
+            cv2.line(image, (30, y), (550, y), (0, 0, 0), 1)
+        self.assertEqual(ocr._find_text_frames(image, [text], []), [])
+        for x in (30, 550):
+            cv2.line(image, (x, 30), (x, 250), (0, 0, 0), 1)
+        self.assertEqual(ocr._find_text_frames(image, [], []), [])
+        tables = ocr._find_text_frames(image, [text], [])
+        self.assertEqual(len(tables), 1)
+        self.assertEqual(ocr._find_text_frames(image, [text], tables), [])
+        image[130:220, 100:500] = np.random.default_rng(12).integers(0, 220, (90, 400, 3), dtype=np.uint8)
+        self.assertEqual(ocr._find_text_frames(image, [text], []), [])
+
     def test_table_rule_mask_preserves_long_character_strokes(self):
         image = Image.new("RGB", (1000, 600), "white")
         draw = ImageDraw.Draw(image)
@@ -257,7 +322,7 @@ class OcrLayoutTests(unittest.TestCase):
             self.assertFalse(any(block['type'] == 'image' for block in blocks))
             self.assertNotIn("secret-example", json.dumps(blocks))
 
-    def test_vision_whole_form_image_is_split_into_editable_rules(self):
+    def test_vision_whole_form_image_is_recovered_as_a_native_single_cell_table(self):
         raw = {'blocks': [{'type': 'text', 'x': 50, 'y': 60, 'width': 140, 'height': 25, 'text': '공문 양식 123'},
                           {'type': 'image', 'x': 0, 'y': 0, 'width': 300, 'height': 200}]}
         response = {'choices': [{'message': {'content': json.dumps(raw)}}]}
@@ -267,8 +332,10 @@ class OcrLayoutTests(unittest.TestCase):
         build.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=build) as folder, patch.object(ocr, '_api_request', return_value=response):
             blocks, _ = ocr._recognize_api(image, Path(folder) / 'page.png', 'openai', {'api_key': 'secret-example'})
-            self.assertTrue(any(block.get('text') == '공문 양식 123' for block in blocks))
-            self.assertGreaterEqual(sum(block['type'] == 'shape' for block in blocks), 4)
+            tables = [block for block in blocks if block['type'] == 'table']
+            self.assertEqual(len(tables), 1)
+            self.assertEqual(tables[0]['rows'], [['공문 양식 123']])
+            self.assertFalse(any(block['type'] == 'shape' for block in blocks))
             self.assertFalse(any(block.get('role') == 'graphics-background' for block in blocks))
             self.assertFalse(any(block['type'] == 'image' and block['width'] > 250 and block['height'] > 140 for block in blocks))
 

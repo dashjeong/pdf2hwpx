@@ -16,7 +16,7 @@ import numpy as np
 import pypdfium2 as pdfium
 from PIL import Image
 
-from .ocr import _find_tables, _assign_table_text
+from .ocr import _find_tables, _assign_table_text, _find_text_frames
 from .editable_graphics import native_pdf_shapes, extract_editable_graphics, apply_native_table_styles
 
 
@@ -181,6 +181,8 @@ def recognize_native_pdf_page(page, image_path: Path, options: dict | None = Non
         return None
     image = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     tables, _ = _find_tables(image) if options.get("detect_tables", True) else ([], None)
+    if options.get('detect_tables', True):
+        tables.extend(_find_text_frames(image, _group_lines(glyphs), tables))
     used = set()
     for table in tables:
         local_fonts = []

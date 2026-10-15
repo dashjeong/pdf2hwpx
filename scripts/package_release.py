@@ -23,7 +23,7 @@ def sha256(path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--name', default='ScanNote-0.1.1-Windows-x64-offline.zip')
+    parser.add_argument('--name', default='ScanNote-0.1.2-Windows-x64-offline.zip')
     args = parser.parse_args(argv)
     if Path(args.name).name != args.name or not args.name.endswith('.zip') or any(c in args.name for c in '/\\:'):
         parser.error('Archive name must be a plain ZIP filename.')
@@ -40,7 +40,7 @@ def main(argv=None):
     source_files = [ROOT / 'app.py', ROOT / 'run.py', ROOT / 'requirements.txt',
                     *sorted((ROOT / 'converter').glob('*.py')), *sorted((ROOT / 'web').glob('*'))]
     manifest = {
-        'version': '0.1.1', 'platform': 'Windows x64',
+        'version': '0.1.2', 'platform': 'Windows x64',
         'created_utc': datetime.now(timezone.utc).isoformat(),
         'offline_runtime_included': True, 'python_install_required': False,
         'models': ['PP-OCRv5 Korean ONNX', 'Qwen3-VL-2B Q4_K_M + Q8 projector'],

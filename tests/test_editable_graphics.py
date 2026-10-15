@@ -25,6 +25,28 @@ class EditableGraphicsTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.source = Path(self.temp.name) / 'page.png'
 
+    def test_dotted_text_frame_does_not_leave_a_picture_covering_the_words(self):
+        image = np.full((300, 600, 3), 255, np.uint8)
+        for x in range(30, 571, 3):
+            image[40, x] = image[240, x] = 90
+        for y in range(40, 241, 3):
+            image[y, 30] = image[y, 570] = 90
+        image[80:95, 60:250] = 0
+        image[120:135, 60:350] = 0
+        texts = [{'x': 60, 'y': y, 'width': width, 'height': 15}
+                 for y, width in [(80, 190), (120, 290)]]
+        # A real picture outside the frame must remain a picture.
+        image[255:285, 100:140] = np.random.default_rng(123).integers(0, 210, (30, 40, 3), dtype=np.uint8)
+        original = image.copy()
+        blocks = extract_editable_graphics(image, texts, [], self.source)
+        dotted = [b for b in blocks if b['type'] == 'shape' and b.get('stroke_style') == 'DOT']
+        self.assertEqual(len(dotted), 4)
+        self.assertTrue(all(b['shape'] == 'line' for b in dotted))
+        pictures = [b for b in blocks if b['type'] == 'image']
+        self.assertTrue(pictures)
+        self.assertFalse(any(b['width'] > 400 and b['height'] > 100 for b in pictures))
+        self.assertTrue(np.array_equal(image, original))
+
     def test_scanned_form_rules_are_shapes_not_page_background(self):
         image = np.full((300, 400, 3), 255, np.uint8)
         cv2.rectangle(image, (20, 30), (370, 260), (0, 0, 0), 2)
@@ -158,8 +180,10 @@ class EditableGraphicsTests(unittest.TestCase):
         self.assertFalse(protected, 'The page-sized scan must not bypass form extraction as a photograph')
         result = recognize_native_pdf_page(page, self.source, {})
         self.assertIsNotNone(result)
-        self.assertTrue(any('SCAN' in block.get('text', '') for block in result['blocks']))
-        self.assertGreaterEqual(sum(b['type'] == 'shape' for b in result['blocks']), 4)
+        tables = [block for block in result['blocks'] if block['type'] == 'table']
+        self.assertEqual(len(tables), 1)
+        self.assertIn('SCAN', tables[0]['rows'][0][0])
+        self.assertFalse(any(b['type'] == 'shape' for b in result['blocks']))
         self.assertFalse(any(b.get('role') == 'graphics-background' for b in result['blocks']))
         self.assertFalse(any(b['type'] == 'image' and b['width'] > 350 and b['height'] > 240 for b in result['blocks']))
 
@@ -268,6 +292,24 @@ class EditableGraphicsTests(unittest.TestCase):
         self.assertEqual(edges['bottom']['color'], '#ff0000')
         self.assertEqual(edges['left']['color'], '#000000')
         self.assertEqual(edges['right']['color'], '#00ff00')
+
+    def test_dotted_style_survives_small_scan_ocr_upscaling(self):
+        from converter.editable_graphics import raster_form_shapes
+        image = np.full((140, 800, 3), 255, np.uint8)
+        for x in range(30, 770, 3):
+            image[35, x] = 0
+        for scale in (1, 2.8):
+            with self.subTest(scale=scale):
+                enlarged = cv2.resize(image, (round(800 * scale), round(140 * scale)), interpolation=cv2.INTER_CUBIC)
+                rules = raster_form_shapes(enlarged, [], [])
+                self.assertEqual(len(rules), 1)
+                self.assertEqual(rules[0]['stroke_style'], 'DOT')
+        dashed = np.full_like(image, 255)
+        for x in range(30, 770, 8):
+            dashed[35, x:x + 4] = 0
+        rules = raster_form_shapes(dashed, [], [])
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]['stroke_style'], 'DASH')
 
     def test_genuine_full_page_photo_remains_an_image(self):
         image = np.random.default_rng(7).integers(0, 230, (120, 160, 3), dtype=np.uint8)

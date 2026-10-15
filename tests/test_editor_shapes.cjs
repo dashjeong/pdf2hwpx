@@ -114,6 +114,16 @@ assert.equal(legacy.getAttribute("aria-hidden"), undefined);
 assert.ok(run("state.dirty"));
 const polygon = run("blockElement(normalizeDocument({pages:[{width:100,height:100,blocks:[{type:'shape',shape:'polyline',closed:true,width:80,height:80,points:[[0,0],[80,0],[40,80]],fill_color:'#112233'}]}]}).pages[0].blocks[0])");
 assert.equal(polygon.children[0].children[0].tagName, "POLYGON");
+run("globalThis.dottedCellTable=normalizeDocument({pages:[{width:500,height:500,blocks:[{type:'table',width:300,height:100,rows:[['표 내용 123']],borders:{top:{style:'DOT',width:1,color:'#444444'},bottom:{style:'DASH',width:2,color:'#444444'}}}]}]}).pages[0].blocks[0]");
+assert.equal(run("blockElement(dottedCellTable).querySelectorAll('td')[0].style.borderTop"), "1px dotted #444444");
+assert.equal(run("blockElement(dottedCellTable).querySelectorAll('td')[0].style.borderBottom"), "2px dashed #444444");
+assert.equal(run("normalizeDocument(JSON.parse(JSON.stringify({pages:[{width:500,height:500,blocks:[dottedCellTable]}]}))).pages[0].blocks[0].borders.top.style"), "DOT");
+for (const [style, dash] of [["DOT", "2 4"], ["DASH", "8 4"]]) {
+  const dotted = run(`normalizeDocument(JSON.parse(JSON.stringify({pages:[{width:100,height:100,blocks:[{type:'shape',shape:'line',width:80,height:0,points:[[0,0],[80,0]],stroke_width:2,stroke_style:'${style}'}]}]}))).pages[0].blocks[0]`);
+  assert.equal(dotted.stroke_style, style);
+  context.dottedFixture = dotted;
+  assert.equal(run("blockElement(dottedFixture).children[0].children[0].getAttribute('stroke-dasharray')"), dash);
+}
 run("globalThis.longShapeDocument={pages:[{width:500,height:500,blocks:[{type:'shape',shape:'polyline',width:499,height:499,points:Array.from({length:5000},(_,i)=>[i/20,(i%100)/5])}]}]}; globalThis.longRoundTrip=normalizeDocument(JSON.parse(JSON.stringify(normalizeDocument(longShapeDocument))));");
 assert.equal(run("longRoundTrip.pages[0].blocks[0].points.length"), 5000);
 assert.equal(run("JSON.stringify(longRoundTrip.pages[0].blocks[0].points.at(-1))"), run("JSON.stringify(longShapeDocument.pages[0].blocks[0].points.at(-1))"));

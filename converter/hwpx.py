@@ -177,6 +177,27 @@ def _box(block, page):
     return left, top, right - left, bottom - top
 
 
+def _picture_overlaps_text(box, page):
+    """A transparent picture still captures editor clicks across its full box.
+
+    Put overlapping pictures behind editable body text and real table objects;
+    alpha holes and a low zOrder alone do not change Hancom's hit testing.
+    """
+    x, y, width, height = box
+    for block in page.get("blocks", []):
+        if block.get("type") not in {"text", "table"}:
+            continue
+        if block.get("type") == "text" and not _text(block.get("text", "")).strip():
+            continue
+        other = _box(block, page)
+        if other is None:
+            continue
+        bx, by, bw, bh = other
+        if min(x + width, bx + bw) > max(x, bx) and min(y + height, by + bh) > max(y, by):
+            return True
+    return False
+
+
 def _clip_segment(a, b, width, height):
     x, y = a
     dx, dy = b[0] - x, b[1] - y
@@ -574,9 +595,12 @@ class _Builder:
             shape.set("ratio", "0")
         elif kind == "line":
             shape.set("isReverseHV", "0")
+        stroke_style = block.get("stroke_style", "SOLID")
+        if stroke_style not in {"SOLID", "DOT", "DASH"}:
+            stroke_style = "SOLID"
         _child(shape, "hp:lineShape", color=_color(block.get("stroke_color")),
                width=max(1, round(max(.01, _number(block.get("stroke_width"), 1)) * scale)),
-               style="SOLID" if block.get("stroke_color", "#000000") is not None and _number(block.get("stroke_width"), 1) > 0 else "NONE",
+               style=stroke_style if block.get("stroke_color", "#000000") is not None and _number(block.get("stroke_width"), 1) > 0 else "NONE",
                endCap="FLAT", headStyle="NORMAL", tailStyle="NORMAL", headfill="0", tailfill="0",
                headSz="SMALL_SMALL", tailSz="SMALL_SMALL", outlineStyle="NORMAL", alpha="0")
         if fill and kind != "line":
@@ -612,15 +636,18 @@ class _Builder:
             width = max(.1, min(5, px * scale * 25.4 / 7200))
             # HWPX table-border thickness has discrete millimetre values.
             width = min((.1, .12, .15, .2, .25, .3, .4, .5, .6, .7, 1, 1.5, 2, 3, 4, 5), key=lambda v: abs(v - width))
-            edges.append((color, width, visible))
+            line_style = edge.get('style', style.get('border_style', 'SOLID'))
+            if line_style not in {'SOLID', 'DOT', 'DASH'}:
+                line_style = 'SOLID'
+            edges.append((color, width, visible, line_style))
         fill = _color(style.get("fill_color"), None)
         key = (tuple(edges), fill)
         if key not in self.border_ids:
             border = deepcopy(self.base_border)
             ident = str(max(int(b.get("id")) for b in self.borders) + 1)
             border.set("id", ident)
-            for side, (color, width, visible) in zip(("leftBorder", "rightBorder", "topBorder", "bottomBorder"), edges):
-                border.find("hh:" + side, NS).attrib.update(type="SOLID" if visible else "NONE", color=color, width=f"{width:g} mm")
+            for side, (color, width, visible, line_style) in zip(("leftBorder", "rightBorder", "topBorder", "bottomBorder"), edges):
+                border.find("hh:" + side, NS).attrib.update(type=line_style if visible else "NONE", color=color, width=f"{width:g} mm")
             if fill:
                 brush = _child(border, "hc:fillBrush")
                 _child(brush, "hc:winBrush", faceColor=fill, hatchColor="#000000", alpha="0")
@@ -735,7 +762,8 @@ def _write_hwpx(document: dict, asset_root: Path, archive: ZipFile, *, bounded_i
                 archive.writestr(name, image_payload)
                 del image_payload
                 _child(manifest, "opf:item", id=binary_id, href=name, **{"media-type": "image/png", "isEmbeded": "1"})
-                builder.picture(run, box, scale, binary_id, z, block.get("role") == "graphics-background")
+                builder.picture(run, box, scale, binary_id, z,
+                                block.get("role") == "graphics-background" or _picture_overlaps_text(box, page))
             else:
                 anchor.remove(run)
         cursor = 100
@@ -815,7 +843,8 @@ def _html_fragments(document: dict, asset_root: Path, *, bounded_images: bool):
                 continue
             x, y, w, h = box
             fs = max(2, min(200, _number(block.get("font_size"), 20)))
-            style = f"left:{x:g}px;top:{y:g}px;width:{w:g}px;height:{h:g}px;font-size:{fs:g}px"
+            layer = 2 if block.get("type") in {"text", "table"} else 0
+            style = f"left:{x:g}px;top:{y:g}px;width:{w:g}px;height:{h:g}px;font-size:{fs:g}px;z-index:{layer}"
             kind = block.get("type")
             if kind == "text":
                 yield f'<div class="block" contenteditable="plaintext-only" style="{style}">{escape(_text(block.get("text", "")))}</div>'
@@ -836,6 +865,9 @@ def _html_fragments(document: dict, asset_root: Path, *, bounded_images: bool):
                 fill = _color(block.get("fill_color"), "none")
                 line_width = max(.01, min(200, _number(block.get("stroke_width"), 1)))
                 shape_style = f'stroke="{stroke}" stroke-width="{line_width:g}" fill="{fill}"'
+                if block.get("stroke_style") in {"DOT", "DASH"}:
+                    dash = line_width * (1 if block['stroke_style'] == 'DOT' else 4)
+                    shape_style += f' stroke-dasharray="{dash:g} {line_width * 2:g}"'
                 yield f'<svg xmlns="http://www.w3.org/2000/svg" class="block" aria-label="편집 가능한 양식 도형" style="{style};overflow:visible" viewBox="0 0 {w:g} {h:g}">'
                 points, segments, closed = _shape_geometry(block, box)
                 original_rect = shape == "rect" and box == tuple(_number(block.get(key)) for key in ("x", "y", "width", "height"))
@@ -885,8 +917,10 @@ def _html_fragments(document: dict, asset_root: Path, *, bounded_images: bool):
                             width = max(0, min(200, _number(edge.get("width"), border_width)))
                             if edge.get("color", color) is None:
                                 width = 0
-                            edge_style += f';border-{side}:{width:g}px solid {color}'
-                        yield f'<td contenteditable="plaintext-only" rowspan="{rs}" colspan="{cs}" style="border:{border_width:g}px solid {border};background:{fill}{edge_style}">{escape(text)}</td>'
+                            line_style = {'DOT': 'dotted', 'DASH': 'dashed'}.get(edge.get('style', cell.get('border_style')), 'solid')
+                            edge_style += f';border-{side}:{width:g}px {line_style} {color}'
+                        line_style = {'DOT': 'dotted', 'DASH': 'dashed'}.get(cell.get('border_style'), 'solid')
+                        yield f'<td contenteditable="plaintext-only" rowspan="{rs}" colspan="{cs}" style="border:{border_width:g}px {line_style} {border};background:{fill}{edge_style}">{escape(text)}</td>'
                     yield "</tr>"
                 yield "</tbody></table>"
         yield "</section>"

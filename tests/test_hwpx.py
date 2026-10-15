@@ -53,6 +53,42 @@ class HwpxExportTests(unittest.TestCase):
     def archive(self, doc=None):
         return ZipFile(BytesIO(export_hwpx(doc or self.doc, self.root)))
 
+    def test_picture_alpha_holes_cannot_cover_body_or_table_editing(self):
+        # Hancom edit mode hits the entire picture rectangle, even when OCR
+        # made its text pixels transparent. Put overlapping pictures behind.
+        Image.new("RGBA", (100, 50), (255, 255, 255, 0)).save(self.root / "job-123" / "frame.png")
+        page = self.doc['pages'][0]
+        for ident, y, height in [('body-frame', 25, 65), ('table-frame', 195, 130)]:
+            page['blocks'].append({'id': ident, 'type': 'image', 'x': 10, 'y': y,
+                                   'width': 450, 'height': height,
+                                   'image_url': '/api/assets/job-123/frame.png'})
+        with self.archive() as package:
+            section = ET.fromstring(package.read('Contents/section0.xml'))
+            pictures = section.findall('.//hp:pic', NS)
+            self.assertEqual([p.get('textWrap') for p in pictures],
+                             ['IN_FRONT_OF_TEXT', 'BEHIND_TEXT', 'BEHIND_TEXT'])
+            self.assertEqual(len(section.findall('.//hp:tbl', NS)), 1)
+            self.assertEqual(len(section.findall('.//hp:tc', NS)), 4)
+            self.assertFalse(section.findall('.//hp:drawText', NS))
+            body = [''.join(p.itertext()) for p in section.findall('hp:p', NS)[1:]]
+            self.assertEqual(body, ['수정한 한글 123 & <검증>', '두 번째 줄'])
+            cells = ''.join(t.text or '' for t in section.findall('.//hp:tc//hp:t', NS))
+            self.assertIn('홍길동', cells)
+            self.assertIn('99,000', cells)
+        html = export_html(self.doc, self.root)
+        self.assertIn(b'z-index:2', html)
+
+    def test_dotted_form_rule_is_editable_and_keeps_its_line_style(self):
+        self.doc['pages'][0]['blocks'].append({'type': 'shape', 'shape': 'line',
+            'x': 10, 'y': 20, 'width': 400, 'height': 0, 'stroke_color': '#888888',
+            'stroke_width': 1, 'stroke_style': 'DOT'})
+        with self.archive() as package:
+            section = ET.fromstring(package.read('Contents/section0.xml'))
+            line = section.find('.//hp:line', NS)
+            self.assertEqual(line.get('textWrap'), 'BEHIND_TEXT')
+            self.assertEqual(line.find('hp:lineShape', NS).get('style'), 'DOT')
+        self.assertIn(b'stroke-dasharray="1 2"', export_html(self.doc, self.root))
+
     def test_package_references_and_xml_are_valid(self):
         with self.archive() as z:
             self.assertIsNone(z.testzip())

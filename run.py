@@ -20,7 +20,7 @@ if __name__ == '__main__':
             import json
             with urllib.request.urlopen('http://127.0.0.1:18080/api/status', timeout=1) as reply:
                 state = json.load(reply)
-            if '--port' not in sys.argv and state.get('version') == '0.1.1' and 'models' in state:
+            if '--port' not in sys.argv and state.get('version') == '0.1.2' and 'models' in state:
                 webbrowser.open('http://127.0.0.1:18080')
                 sys.exit(0)
         except Exception:
